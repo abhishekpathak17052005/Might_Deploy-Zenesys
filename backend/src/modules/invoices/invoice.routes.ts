@@ -6,6 +6,7 @@ import { sendError, sendSuccess } from "../../utils/apiResponse";
 import { auditService } from "../audit";
 import { categorizationService } from "../categorization";
 import { extractionService } from "../extraction";
+import { invoiceProcessingService } from "../processing";
 import { uploadInvoiceDocumentRequestSchema } from "./invoice.schema";
 import { invoiceDocumentService } from "./invoice.service";
 import type { UploadInvoiceDocumentResponse } from "./invoice.types";
@@ -256,6 +257,40 @@ invoiceRouter.post(
       });
 
       return sendError(res, "EXTRACTION_FAILED", safeError, 422);
+    }
+  }
+);
+
+// POST /invoices/:documentId/process - Run complete invoice processing orchestration
+invoiceRouter.post(
+  "/:documentId/process",
+  verifyFirebaseToken,
+  requireRole("PROCUREMENT", "ADMIN"),
+  async (req: Request, res: Response): Promise<Response> => {
+    const { documentId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return sendError(res, "UNAUTHORIZED", "User ID not found in token", 401);
+    }
+
+    try {
+      const document = await invoiceProcessingService.getInvoiceDocument(documentId);
+
+      if (!document) {
+        return sendError(res, "NOT_FOUND", "Invoice document not found", 404);
+      }
+
+      if (document.uploaderUserId !== userId && req.user?.role !== "ADMIN") {
+        return sendError(res, "FORBIDDEN", "No access to this document", 403);
+      }
+
+      const result = await invoiceProcessingService.process(documentId);
+      return sendSuccess(res, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("invoice.processing.failed", { documentId, error: message });
+      return sendError(res, "INVOICE_PROCESSING_FAILED", message, 422);
     }
   }
 );

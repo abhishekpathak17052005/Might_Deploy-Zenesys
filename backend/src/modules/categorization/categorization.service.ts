@@ -1,49 +1,131 @@
-import { categorizationResponseSchema, allowedCategorySchema } from "./categorization.schemas";
-import { geminiCategorizationProvider } from "./geminiCategorizationProvider";
-import type { InvoiceCategorization, InvoiceCategorizationProvider } from "./categorization.types";
-import type { StructuredInvoiceData } from "../extraction";
+import type { StructuredInvoiceData } from "../extraction/extraction.types";
+import type { InvoiceCategory, InvoiceCategorization } from "./categorization.types";
+import { CATEGORIZATION_KEYWORDS } from "./categorization.keywords";
 
+/**
+ * Deterministic, rule-based invoice categorization service.
+ * Uses keyword matching and line-item analysis.
+ * NO LLM - pure deterministic logic.
+ */
 export class CategorizationService {
-  constructor(private readonly provider: InvoiceCategorizationProvider = geminiCategorizationProvider) {}
+  /**
+   * Categorize an invoice using deterministic keyword matching.
+   */
+  categorize(input: {
+    vendorName: string;
+    description?: string;
+    lineItems?: Array<{ description: string }>;
+  }): InvoiceCategorization {
+    const startTime = Date.now();
 
-  async categorize(invoice: StructuredInvoiceData): Promise<InvoiceCategorization> {
-    const raw = await this.provider.categorizeInvoice({
-      vendorName: invoice.vendorName,
-      itemDescriptions: invoice.items.map((item) => item.description)
-    });
+    // Build the full text to analyze
+    const textParts = [
+      input.vendorName || "",
+      input.description || "",
+      ...(input.lineItems?.map((item) => item.description) || [])
+    ];
+    const fullText = textParts.join(" ").toLowerCase();
 
-    return this.normalize(raw);
-  }
+    // Score each category
+    const categoryScores = this.scoreCategories(fullText);
 
-  normalize(raw: unknown): InvoiceCategorization {
-    const parsed = categorizationResponseSchema.safeParse(raw);
-    if (!parsed.success) {
-      return {
-        category: "Other",
-        confidence: 0,
-        reason: "Categorization response was malformed.",
-        status: "FAILED",
-        provider: "gemini",
-        model: process.env.GEMINI_CATEGORIZATION_MODEL ?? process.env.GEMINI_EXTRACTION_MODEL ?? "gemini-1.5-flash",
-        categorizedAt: new Date()
-      };
-    }
+    // Find the best match
+    const topMatch = categoryScores.reduce((prev, curr) => (curr.score > prev.score ? curr : prev));
 
-    const categoryResult = allowedCategorySchema.safeParse(parsed.data.category);
-    const category = categoryResult.success ? categoryResult.data : "Other";
-    const status = parsed.data.confidence >= 0.75 ? "HIGH_CONFIDENCE" : "LOW_CONFIDENCE";
+    // Determine confidence level
+    const confidence = Math.min(1, topMatch.score / 100);
+    const status = confidence >= 0.75 ? "HIGH_CONFIDENCE" : "LOW_CONFIDENCE";
 
-    return {
-      category,
-      confidence: parsed.data.confidence,
-      reason: categoryResult.success
-        ? parsed.data.reason
-        : `Gemini returned unsupported category "${parsed.data.category}". Mapped to Other.`,
+    const result: InvoiceCategorization = {
+      category: topMatch.category,
+      confidence,
+      reason: topMatch.reason,
       status,
-      provider: "gemini",
-      model: process.env.GEMINI_CATEGORIZATION_MODEL ?? process.env.GEMINI_EXTRACTION_MODEL ?? "gemini-1.5-flash",
+      method: "RULE_BASED",
+      matchedSignals: topMatch.signals,
+      provider: "DETERMINISTIC",
+      model: "KEYWORD_MATCHING_V1",
       categorizedAt: new Date()
     };
+
+    console.info("categorization.completed", {
+      category: result.category,
+      confidence: result.confidence,
+      durationMs: Date.now() - startTime,
+      status: result.status
+    });
+
+    return result;
+  }
+
+  /**
+   * Score each category based on keyword matches.
+   */
+  private scoreCategories(
+    text: string
+  ): Array<{
+    category: InvoiceCategory;
+    score: number;
+    reason: string;
+    signals: string[];
+  }> {
+    const results: Array<{
+      category: InvoiceCategory;
+      score: number;
+      reason: string;
+      signals: string[];
+    }> = [];
+
+    for (const [category, keywords] of Object.entries(CATEGORIZATION_KEYWORDS)) {
+      const signals: string[] = [];
+      let score = 0;
+
+      // Primary keywords (high weight)
+      for (const keyword of keywords.primary) {
+        if (text.includes(keyword)) {
+          score += 20;
+          signals.push(`primary: ${keyword}`);
+        }
+      }
+
+      // Secondary keywords (medium weight)
+      for (const keyword of keywords.secondary) {
+        if (text.includes(keyword)) {
+          score += 10;
+          signals.push(`secondary: ${keyword}`);
+        }
+      }
+
+      // Tertiary keywords (low weight)
+      for (const keyword of keywords.tertiary) {
+        if (text.includes(keyword)) {
+          score += 5;
+          signals.push(`tertiary: ${keyword}`);
+        }
+      }
+
+      // Negative keywords (penalty)
+      for (const keyword of keywords.negative) {
+        if (text.includes(keyword)) {
+          score -= 15;
+          signals.push(`negative: ${keyword}`);
+        }
+      }
+
+      const reason =
+        signals.length > 0
+          ? `Matched signals: ${signals.slice(0, 3).join(", ")}`
+          : "No specific signals matched, default categorization";
+
+      results.push({
+        category: category as InvoiceCategory,
+        score: Math.max(0, score),
+        reason,
+        signals
+      });
+    }
+
+    return results;
   }
 }
 
