@@ -1,33 +1,84 @@
-# invoiceflow
+# InvoiceFlow
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+InvoiceFlow is an intelligent invoice verification and risk-intelligence platform for finance and procurement teams.
 
-## Built with v0
+It combines a modern frontend experience with backend anomaly detection, validation logic, and approval workflows to help organizations identify suspicious or inconsistent invoices before they are approved.
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+## Overview
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_u5vbGuXP5LZUo2ssAOaU5bhgHlvH)
+The platform converts vendor invoices into structured financial data, validates them against purchase orders and vendor records, analyzes historical patterns, and surfaces explainable risk findings to finance managers.
 
-## Getting Started
+## Problem
 
-First, run the development server:
+Manual invoice review is slow and error-prone. Teams often need to validate:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+- vendor legitimacy and approval status
+- GSTIN and vendor information accuracy
+- purchase order existence and matches
+- invoice quantity and amount consistency
+- duplicate or split-invoice patterns
+- unusual vendor behavior or historical anomalies
+- suspicious relationships that require manual review
+
+## Solution
+
+The system creates a verification layer between invoice submission and final approval.
+
+```text
+Vendor
+   ↓
+Procurement Officer
+   ↓
+Invoice Upload
+   ↓
+Document Processing
+   ↓
+OCR / AI Extraction
+   ↓
+Invoice Categorization
+   ↓
+Deterministic Validation
+   ↓
+Vendor / GST / PO Verification
+   ↓
+Relationship & Historical Analysis
+   ↓
+Risk Engine
+   ↓
+Explainable Risk Findings
+   ↓
+Finance Manager
+   ↓
+Approve / Reject
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Frontend
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+This repository contains a frontend app built with React, Vite, Tailwind, and TanStack tooling.
 
-## Learn More
+### Run locally
 
-To learn more, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+Then open http://localhost:5173 in your browser.
+
+## Backend
+
+The project also includes backend services for extraction, categorization, validation, anomaly detection, approval flows, and audit logging.
+
+## Tech stack
+
+- React + Vite
+- TypeScript
+- Tailwind CSS
+- TanStack Router / Query
+- Recharts
+- Backend API modules for invoice processing and risk analysis
+
+## Related project info
+
+This repository is also connected to a v0 project setup with a full frontend workflow and can be continued in the app environment.
+

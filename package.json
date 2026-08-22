@@ -1,8 +1,16 @@
 {
   "name": "invoiceflow",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "vite dev", "build": "vite build", "preview": "vite preview", "lint": "eslint ." },
+  "description": "Invoice verification and risk intelligence platform with a frontend dashboard and backend workflow services.",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "start": "node server.js"
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.101.1",
