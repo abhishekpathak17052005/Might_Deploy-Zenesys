@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: invoice-flow-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_EXTRACTION_MODEL
+        value: gemini-pro-vision
+      - key: GEMINI_CATEGORIZATION_MODEL
+        value: gemini-pro
+      - key: CORS_ORIGIN
+        value: https://invoice-flow-frontend.onrender.com
+      - key: FIREBASE_PROJECT_ID
+        value: genesis-ec0bd
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        value: genesis-ec0bd.firebasestorage.app

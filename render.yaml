@@ -1,0 +1,52 @@
+services:
+  # Backend API Service
+  - type: web
+    name: invoice-flow-backend
+    runtime: node
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_EXTRACTION_MODEL
+        value: gemini-pro-vision
+      - key: GEMINI_CATEGORIZATION_MODEL
+        value: gemini-pro
+      - key: CORS_ORIGIN
+        value: https://invoice-flow-frontend.onrender.com
+      - key: FIREBASE_PROJECT_ID
+        value: genesis-ec0bd
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        value: genesis-ec0bd.firebasestorage.app
+
+  # Frontend Application
+  - type: web
+    name: invoice-flow-frontend
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    envVars:
+      - key: VITE_API_URL
+        value: https://invoice-flow-backend.onrender.com/api
+      - key: VITE_FIREBASE_API_KEY
+        value: AIzaSyBfaN5KTUXNGfZL2qzzi8nv1qEGAdkZLU
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: genesis-ec0bd.firebaseapp.com
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: genesis-ec0bd
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: genesis-ec0bd.firebasestorage.app
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        value: "197595305755"
+      - key: VITE_FIREBASE_APP_ID
+        value: 1:197595305755:web:72998a2f5781e2330ca3a

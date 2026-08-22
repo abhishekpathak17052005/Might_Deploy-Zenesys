@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: invoice-flow-frontend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: VITE_API_URL
+        value: https://invoice-flow-backend.onrender.com/api
+      - key: VITE_FIREBASE_API_KEY
+        value: AIzaSyBfaN5KTUXNGfZL2qzzi8nv1qEGAdkZLU
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: genesis-ec0bd.firebaseapp.com
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: genesis-ec0bd
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: genesis-ec0bd.firebasestorage.app
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        value: "197595305755"
+      - key: VITE_FIREBASE_APP_ID
+        value: 1:197595305755:web:72998a2f5781e2330ca3a
