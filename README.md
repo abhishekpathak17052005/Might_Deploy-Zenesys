@@ -1,37 +1,28 @@
-# Invoice Verification & Risk Intelligence Platform
+# InvoiceFlow
 
-> **Verify. Analyze. Decide.**
+InvoiceFlow is an intelligent invoice verification and risk-intelligence platform for finance and procurement teams.
 
-An intelligent invoice verification and risk-analysis platform designed to help organizations identify invoice inconsistencies, anomalies, and suspicious transaction patterns **before a Finance Manager approves an invoice**.
+It combines a modern frontend experience with backend anomaly detection, validation logic, and approval workflows to help organizations identify suspicious or inconsistent invoices before they are approved.
 
-The system converts an unstructured vendor invoice into structured financial data, categorizes it, validates it against available business context, analyzes transaction relationships, and presents explainable findings to the Finance Manager.
+## Overview
 
----
+The platform converts vendor invoices into structured financial data, validates them against purchase orders and vendor records, analyzes historical patterns, and surfaces explainable risk findings to finance managers.
 
-## 🎯 Problem
+## Problem
 
-Organizations process large numbers of vendor invoices manually.
+Manual invoice review is slow and error-prone. Teams often need to validate:
 
-Before approving an invoice, Finance teams may need to check:
+- vendor legitimacy and approval status
+- GSTIN and vendor information accuracy
+- purchase order existence and matches
+- invoice quantity and amount consistency
+- duplicate or split-invoice patterns
+- unusual vendor behavior or historical anomalies
+- suspicious relationships that require manual review
 
-- Is the vendor legitimate and approved?
-- Does the GSTIN match the vendor?
-- Does the referenced Purchase Order exist?
-- Does the invoice amount match the PO?
-- Are the quantities within the ordered quantities?
-- Is the invoice mathematically consistent?
-- Is this invoice a duplicate?
-- Is the amount unusual compared with the vendor's history?
-- Are multiple invoices being used to avoid an approval threshold?
-- Are there inconsistencies that require manual review?
+## Solution
 
-Checking these relationships manually becomes time-consuming and can allow suspicious invoices to proceed unnoticed.
-
----
-
-# 💡 Our Solution
-
-The platform creates a verification and risk-intelligence layer between **invoice submission and Finance review**.
+The system creates a verification layer between invoice submission and final approval.
 
 ```text
 Vendor
@@ -59,3 +50,35 @@ Explainable Risk Findings
 Finance Manager
    ↓
 Approve / Reject
+```
+
+## Frontend
+
+This repository contains a frontend app built with React, Vite, Tailwind, and TanStack tooling.
+
+### Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173 in your browser.
+
+## Backend
+
+The project also includes backend services for extraction, categorization, validation, anomaly detection, approval flows, and audit logging.
+
+## Tech stack
+
+- React + Vite
+- TypeScript
+- Tailwind CSS
+- TanStack Router / Query
+- Recharts
+- Backend API modules for invoice processing and risk analysis
+
+## Related project info
+
+This repository is also connected to a v0 project setup with a full frontend workflow and can be continued in the app environment.
+
