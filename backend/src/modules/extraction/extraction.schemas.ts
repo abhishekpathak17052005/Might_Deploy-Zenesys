@@ -4,9 +4,9 @@ import { GSTIN_FORMAT } from "./extraction.constants";
 const confidenceSchema = z.number().min(0).max(1).optional();
 
 const stringFieldSchema = z.union([
-  z.string(),
+  z.string().min(1),
   z.object({
-    value: z.string().nullable(),
+    value: z.string().min(1),
     confidence: confidenceSchema
   })
 ]);
@@ -20,9 +20,9 @@ const optionalStringFieldSchema = z.union([
 ]);
 
 const numberFieldSchema = z.union([
-  z.number(),
+  z.number().finite(),
   z.object({
-    value: z.number().nullable(),
+    value: z.number().finite(),
     confidence: confidenceSchema
   })
 ]);
