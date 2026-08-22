@@ -9,6 +9,7 @@ import {
   ScanLine,
   Wallet,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, StatCard, StatusChip } from "@/components/kit";
 import { invoices, inr, monthlyVolume, STATUS_LABEL } from "@/lib/mock-data";
@@ -32,13 +33,42 @@ export const Route = createFileRoute("/procurement/dashboard")({
 });
 
 function ProcurementDashboard() {
+  const [procurementData, setProcurementData] = useState<any>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const token = localStorage.getItem("firebaseToken");
+        const email = localStorage.getItem("userEmail");
+        setUserEmail(email || "Officer");
+
+        if (!token) {
+          return;
+        }
+
+        // Dynamic import ensures this only runs on the client
+        const { apiClient } = await import("@/lib/api");
+        const result = await apiClient.getProcurementDashboard(token);
+        if (result.success && result.data) {
+          setProcurementData(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to load procurement dashboard", err);
+        // Fall back to mock data - don't show error
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
   const recent = invoices.slice(0, 4);
   const max = Math.max(...monthlyVolume.map((m) => m.a));
 
   return (
     <AppShell
       role="Procurement"
-      title="Welcome Back, Sujon"
+      title={`Welcome Back, ${userEmail.split("@")[0]}`}
       subtitle="Procurement Officer · Vendor bill submissions"
       actions={
         <>
