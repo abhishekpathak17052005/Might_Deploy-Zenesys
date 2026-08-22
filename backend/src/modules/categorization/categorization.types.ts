@@ -17,9 +17,12 @@ export interface InvoiceCategorization {
   confidence: number;
   reason: string;
   status: "HIGH_CONFIDENCE" | "LOW_CONFIDENCE" | "FAILED";
-  provider: "gemini";
+  method?: "RULE_BASED" | "LLM";
+  matchedSignals?: string[];
+  provider: "gemini" | "DETERMINISTIC";
   model: string;
   categorizedAt: Date;
+  glAccount?: string;
 }
 
 export interface InvoiceCategorizationProvider {

@@ -28,11 +28,17 @@ export interface VerificationAttempt {
 export interface VendorContext {
   vendorId: string;
   vendorName?: string;
+  legalName?: string | null;
   gstin?: string;
   gstinValid?: boolean;
   vendorExists?: boolean;
   vendorActive?: boolean;
+  vendorApproved?: boolean;
   vendorTaxRegistered?: boolean;
+  bankDetailsVerified?: boolean;
+  bankDetailsUpdatedAt?: Date | string | null;
+  approvedAt?: Date | string | null;
+  createdAt?: Date | string | null;
   historicalInvoiceCount?: number;
   historicalAnomalyRate?: number;
   riskProfile?: "LOW" | "MEDIUM" | "HIGH";
@@ -45,14 +51,24 @@ export interface VendorContext {
 export interface POContext {
   poId: string;
   poNumber?: string;
+  vendorId?: string | null;
   poVendorMatch?: boolean;
   poExists?: boolean;
   poActive?: boolean;
   poAmount?: number;
+  remainingAmount?: number | null;
   poQuantity?: number;
   poDate?: Date;
   poDueDate?: Date;
   poStatus?: string;
+  lineItems?: Array<{
+    id?: string;
+    sku?: string | null;
+    productCode?: string | null;
+    description?: string | null;
+    quantity?: number | null;
+    amount?: number | null;
+  }>;
 }
 
 // ============================================================================
@@ -68,6 +84,44 @@ export interface HistoricalContext {
   invoicesLastNDays?: number;
   lastInvoiceDate?: Date;
   duplicateDetectionWindow?: "LAST_7_DAYS" | "LAST_30_DAYS" | "LAST_90_DAYS";
+  invoices?: Array<{
+    id?: string;
+    invoiceNumber?: string | null;
+    vendorId?: string | null;
+    vendorName?: string | null;
+    poId?: string | null;
+    poNumber?: string | null;
+    totalAmount?: number | null;
+    invoiceDate?: string | Date | null;
+    gstin?: string | null;
+    lineItems?: Array<{
+      id?: string;
+      sku?: string | null;
+      productCode?: string | null;
+      description?: string | null;
+      quantity?: number | null;
+      amount?: number | null;
+    }>;
+  }>;
+  recentInvoices?: Array<{
+    id?: string;
+    invoiceNumber?: string | null;
+    vendorId?: string | null;
+    vendorName?: string | null;
+    poId?: string | null;
+    poNumber?: string | null;
+    totalAmount?: number | null;
+    invoiceDate?: string | Date | null;
+    gstin?: string | null;
+    lineItems?: Array<{
+      id?: string;
+      sku?: string | null;
+      productCode?: string | null;
+      description?: string | null;
+      quantity?: number | null;
+      amount?: number | null;
+    }>;
+  }>;
 }
 
 // ============================================================================

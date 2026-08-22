@@ -20,6 +20,13 @@ const routes = [
     requiresFile: false
   },
   {
+    method: "POST",
+    path: "/api/invoices/:documentId/process",
+    description: "Run complete invoice processing orchestration",
+    requiresAuth: true,
+    requiresFile: false
+  },
+  {
     method: "GET",
     path: "/api/invoices",
     description: "List user's documents",
@@ -72,9 +79,9 @@ const fileValidationRules = [
 
 const tests: RouteTest[] = [
   {
-    name: "routes: 6 invoice endpoints exist",
+    name: "routes: 7 invoice endpoints exist",
     run: () => {
-      assert.equal(routes.length, 6, "Should have exactly 6 invoice endpoints");
+      assert.equal(routes.length, 7, "Should have exactly 7 invoice endpoints");
       const methods = new Set(routes.map((r) => r.method));
       assert.ok(methods.has("POST"), "Should have POST endpoint");
       assert.ok(methods.has("GET"), "Should have GET endpoints");
@@ -97,6 +104,15 @@ const tests: RouteTest[] = [
       assert.ok(extract, "Extraction endpoint should exist");
       assert.equal(extract?.requiresAuth, true, "Extraction should require auth");
       assert.equal(extract?.requiresFile, false, "Extraction should reuse stored document");
+    }
+  },
+  {
+    name: "routes: processing endpoint exists",
+    run: () => {
+      const process = routes.find((r) => r.method === "POST" && r.path === "/api/invoices/:documentId/process");
+      assert.ok(process, "Processing endpoint should exist");
+      assert.equal(process?.requiresAuth, true, "Processing should require auth");
+      assert.equal(process?.requiresFile, false, "Processing should reuse stored document");
     }
   },
   {
@@ -273,11 +289,13 @@ const tests: RouteTest[] = [
     name: "authorization: PROCUREMENT role can trigger extraction",
     run: () => {
       const extractionEndpoint = "/api/invoices/:documentId/extract";
+      const processEndpoint = "/api/invoices/:documentId/process";
       const requiredRole = "PROCUREMENT";
       const method = "POST";
       assert.ok(requiredRole, "PROCUREMENT role requirement should be enforced");
       assert.equal(method, "POST", "Extraction should be POST endpoint");
       assert.ok(extractionEndpoint.includes("extract"), "Endpoint should support extraction");
+      assert.ok(processEndpoint.includes("process"), "Endpoint should support processing orchestration");
     }
   },
   {

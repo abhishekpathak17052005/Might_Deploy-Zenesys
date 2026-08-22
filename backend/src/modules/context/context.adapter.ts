@@ -8,6 +8,11 @@ import type { RiskContext } from "./context.types";
 import type { AnomalyContext } from "../anomaly/anomaly.types";
 import { mergeAnomalyConfig } from "../anomaly/anomaly.config";
 
+function dateOnly(value: Date | string | null | undefined): string | Date | null | undefined {
+  if (!(value instanceof Date)) return value;
+  return value.toISOString().slice(0, 10);
+}
+
 /**
  * Adapt RiskContext to AnomalyContext format for anomaly engine evaluation.
  * Maps verified data from context layer into the input format anomaly rules expect.
@@ -27,7 +32,7 @@ export function adaptRiskContextToAnomalyContext(riskContext: RiskContext): Omit
       taxAmount: riskContext.invoice.taxAmount,
       invoiceDate: riskContext.invoice.invoiceDate,
       dueDate: riskContext.invoice.dueDate,
-      gstin: riskContext.invoice.vendorId, // Will be filled from vendor context
+      gstin: riskContext.invoice.gstin,
       lineItems: riskContext.invoice.lineItems?.map(item => ({
         id: item.id,
         sku: item.sku,
@@ -42,33 +47,43 @@ export function adaptRiskContextToAnomalyContext(riskContext: RiskContext): Omit
       name: riskContext.vendor.vendorName,
       gstin: riskContext.vendor.gstin,
       isActive: riskContext.vendor.vendorActive,
-      isApproved: riskContext.vendor.vendorTaxRegistered,
-      legalName: riskContext.vendor.vendorName
+      isApproved: riskContext.vendor.vendorApproved ?? riskContext.vendor.vendorTaxRegistered,
+      legalName: riskContext.vendor.legalName ?? riskContext.vendor.vendorName,
+      bankDetailsVerified: riskContext.vendor.bankDetailsVerified,
+      bankDetailsUpdatedAt: riskContext.vendor.bankDetailsUpdatedAt,
+      approvedAt: riskContext.vendor.approvedAt,
+      createdAt: riskContext.vendor.createdAt
     } : undefined,
 
     purchaseOrder: riskContext.po ? {
       id: riskContext.po.poId,
       poNumber: riskContext.po.poNumber,
-      vendorId: riskContext.invoice.vendorId,
+      vendorId: riskContext.po.vendorId ?? riskContext.invoice.vendorId,
       totalAmount: riskContext.po.poAmount,
       poDate: riskContext.po.poDate,
-      lineItems: [] // PO line items not tracked in RiskContext yet
+      lineItems: riskContext.po.lineItems ?? []
     } : undefined,
 
-    historicalInvoices: riskContext.history ? [
+    historicalInvoices: riskContext.history?.invoices?.map((invoice) => ({
+      ...invoice,
+      invoiceDate: dateOnly(invoice.invoiceDate)
+    })) ?? (riskContext.history ? [
       {
         id: `historical_${riskContext.history.vendorId}`,
         vendorId: riskContext.history.vendorId,
         invoiceNumber: undefined,
         totalAmount: riskContext.history.averageAmount,
-        invoiceDate: riskContext.history.lastInvoiceDate,
+        invoiceDate: dateOnly(riskContext.history.lastInvoiceDate),
         lineItems: riskContext.history.averageQuantity ? [
           { quantity: riskContext.history.averageQuantity }
         ] : []
       }
-    ] : [],
+    ] : []),
 
-    recentInvoices: [] // Populated by context service in Phase 3
+    recentInvoices: riskContext.history?.recentInvoices?.map((invoice) => ({
+      ...invoice,
+      invoiceDate: dateOnly(invoice.invoiceDate)
+    })) ?? []
   };
 }
 

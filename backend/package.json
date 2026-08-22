@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts",
+    "test": "tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts && tsx src/modules/processing/__tests__/invoiceProcessing.test.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },
