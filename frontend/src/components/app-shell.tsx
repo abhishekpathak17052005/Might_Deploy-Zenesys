@@ -53,9 +53,9 @@ export function AppShell({
         ];
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6">
-      <div className="mx-auto max-w-[1500px] rounded-4xl bg-surface p-3 shadow-[var(--shadow-shell)] md:p-5">
-        <header className="mb-5 flex items-center justify-between gap-4 rounded-3xl bg-card px-4 py-3 shadow-card md:px-6">
+    <div className="min-h-screen bg-background p-3 md:p-4">
+      <div className="mx-auto max-w-[1500px] rounded-4xl bg-surface p-2 shadow-[var(--shadow-shell)] md:p-3">
+        <header className="mb-4 flex items-center justify-between gap-3 rounded-3xl bg-card px-3 py-2.5 shadow-card md:px-4">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
               <ShieldCheck className="size-5" />
@@ -102,7 +102,7 @@ export function AppShell({
           </div>
         </header>
 
-        <div className="flex gap-5 page-enter">
+        <div className="flex gap-4 page-enter">
           <aside className="hidden w-14 shrink-0 flex-col items-center justify-between rounded-3xl bg-card py-4 shadow-card md:flex">
             <div className="flex flex-col items-center gap-2">
               {railItems.map((item) => {
@@ -139,7 +139,7 @@ export function AppShell({
           </aside>
 
           <main className="min-w-0 flex-1">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{title}</h1>
                 {subtitle ? (

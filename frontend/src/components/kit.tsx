@@ -9,7 +9,7 @@ export function Card({
   children: ReactNode;
   className?: string;
 }) {
-  return <section className={`card-surface p-5 card-reveal ${className}`}>{children}</section>;
+  return <section className={`card-surface p-4 card-reveal ${className}`}>{children}</section>;
 }
 
 export function CardHead({
@@ -24,8 +24,8 @@ export function CardHead({
   right?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-start justify-between gap-3">
-      <div className="flex items-center gap-2.5">
+    <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="flex items-center gap-2">
         {icon ? (
           <span className="grid size-9 place-items-center rounded-xl bg-muted text-foreground">
             {icon}
@@ -63,7 +63,7 @@ export function StatCard({
   const deep = tone === "deep";
   return (
     <div
-      className={`card-surface p-5 card-reveal card-interactive ${deep ? "bg-primary-deep text-primary-foreground" : ""}`}
+      className={`card-surface p-4 card-reveal card-interactive ${deep ? "bg-primary-deep text-primary-foreground" : ""}`}
     >
       <div className="flex items-start justify-between">
         <span
@@ -146,7 +146,7 @@ export function StatusChip({ label }: { label: string }) {
 export function CheckRow({ label, value }: { label: string; value: string }) {
   const unavailable = value === "Not Connected";
   return (
-    <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+    <div className="flex items-center justify-between border-b border-border py-2 last:border-0">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span
         className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
@@ -162,7 +162,7 @@ export function CheckRow({ label, value }: { label: string; value: string }) {
 
 export function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
+    <div className="flex items-center justify-between border-b border-border py-2 last:border-0">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="text-sm font-semibold">{value}</span>
     </div>
