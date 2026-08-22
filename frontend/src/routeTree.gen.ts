@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as FinanceDashboardRouteImport } from './routes/finance.dashboard'
 import { Route as FinanceReviewRouteImport } from './routes/finance.review'
 import { Route as ProcurementDashboardRouteImport } from './routes/procurement.dashboard'
@@ -21,6 +22,11 @@ import { Route as ProcurementInvoicesNewRouteImport } from './routes/procurement
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FinanceDashboardRoute = FinanceDashboardRouteImport.update({
@@ -62,6 +68,7 @@ const ProcurementInvoicesNewRoute = ProcurementInvoicesNewRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
@@ -83,6 +91,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   FinanceReviewRoute: typeof FinanceReviewRoute
   ProcurementDashboardRoute: typeof ProcurementDashboardRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/finance/dashboard': {
@@ -198,6 +218,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   FinanceReviewRoute: FinanceReviewRoute,
   ProcurementDashboardRoute: ProcurementDashboardRoute,

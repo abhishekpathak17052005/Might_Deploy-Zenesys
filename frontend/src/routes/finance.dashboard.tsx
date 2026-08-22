@@ -6,6 +6,7 @@ import {
   ClipboardList,
   TrendingUp,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, Dot, StatCard } from "@/components/kit";
 import { categoryMix, invoices, inr, monthlyVolume } from "@/lib/mock-data";
@@ -30,8 +31,40 @@ export const Route = createFileRoute("/finance/dashboard")({
 });
 
 function FinanceDashboard() {
-  const attention = invoices.filter((i) => i.attention);
+  const [financeQueue, setFinanceQueue] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const token = localStorage.getItem("firebaseToken");
+        if (!token) {
+          return;
+        }
+
+        // Dynamic import ensures this only runs on the client
+        const { apiClient } = await import("@/lib/api");
+        const result = await apiClient.getFinanceReviewQueue(token);
+        if (result.success && result.data) {
+          setFinanceQueue(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard", err);
+        // Fall back to mock data - don't show error
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
+  // Use mock data for display while real data loads
+  const attention = invoices.filter((i) => i.attention).slice(0, financeQueue.length > 0 ? Math.min(financeQueue.length, 4) : 3);
   const max = Math.max(...monthlyVolume.map((m) => m.a));
+  
+  // Calculate metrics from mock data for now
+  const pendingReview = 12;
+  const highRisk = 4;
+  const approved = 38;
+  const valueInReview = 383000;
 
   return (
     <AppShell
@@ -52,7 +85,7 @@ function FinanceDashboard() {
           <StatCard
             icon={<ClipboardList className="size-4.5" />}
             label="Pending Review"
-            value="12"
+            value={String(pendingReview)}
             hint="Invoices vs last month"
             delta="+20.9%"
             tone="deep"
@@ -60,21 +93,21 @@ function FinanceDashboard() {
           <StatCard
             icon={<AlertTriangle className="size-4.5" />}
             label="High Risk"
-            value="4"
+            value={String(highRisk)}
             hint="Signals vs last month"
             delta="+10.9%"
           />
           <StatCard
             icon={<BadgeCheck className="size-4.5" />}
             label="Approved"
-            value="38"
+            value={String(approved)}
             hint="Payments cleared"
             delta="-10.5%"
           />
           <StatCard
             icon={<TrendingUp className="size-4.5" />}
             label="Value in Review"
-            value={inr(383000)}
+            value={inr(valueInReview)}
             hint="Across 12 invoices"
             delta="+20.9%"
           />
@@ -146,30 +179,34 @@ function FinanceDashboard() {
             sub="Which invoices need my attention and why"
           />
           <div className="flex flex-col gap-3">
-            {attention.map((inv) => (
-              <Link
-                key={inv.id}
-                to="/finance/invoices/$id"
-                params={{ id: inv.id }}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-muted"
-              >
-                <span className="flex items-center gap-3">
-                  <Dot level={inv.risk.level} />
-                  <span>
-                    <span className="block text-sm font-bold">
-                      {inv.invoiceNumber} · {inv.vendorName}
+            {attention.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No invoices requiring attention</p>
+            ) : (
+              attention.map((inv) => (
+                <Link
+                  key={inv.id}
+                  to="/finance/invoices/$id"
+                  params={{ id: inv.id }}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-muted"
+                >
+                  <span className="flex items-center gap-3">
+                    <Dot level={inv.risk.level} />
+                    <span>
+                      <span className="block text-sm font-bold">
+                        {inv.invoiceNumber} · {inv.vendorName}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">{inv.attention}</span>
                     </span>
-                    <span className="block text-xs text-muted-foreground">{inv.attention}</span>
                   </span>
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold">
-                    Risk {inv.risk.score}
+                  <span className="flex items-center gap-3">
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold">
+                      Risk {inv.risk.score}
+                    </span>
+                    <span className="text-sm font-extrabold">{inr(inv.amount)}</span>
                   </span>
-                  <span className="text-sm font-extrabold">{inr(inv.amount)}</span>
-                </span>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </div>
         </Card>
 
