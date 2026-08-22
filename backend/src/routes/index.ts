@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { COLLECTIONS } from "../config/constants";
+import { isFirebaseConfigured } from "../config/env";
 import { firestore, storage } from "../config/firebase";
 import { verifyFirebaseToken } from "../middleware/auth.middleware";
 import { anomalyRouter } from "../modules/anomaly";
 import { auditRouter } from "../modules/audit/audit.routes";
 import { invoiceRouter } from "../modules/invoices";
 import { approvalRouter } from "../modules/approvals";
-import { sendSuccess } from "../utils/apiResponse";
+import { sendError, sendSuccess } from "../utils/apiResponse";
 
 export const router = Router();
 
@@ -18,6 +19,15 @@ router.get("/health", (_req, res) => {
 });
 
 router.get("/health/firebase", async (_req, res, next) => {
+  if (!isFirebaseConfigured) {
+    return sendError(
+      res,
+      "FIREBASE_NOT_CONFIGURED",
+      "Firebase credentials are not configured for this environment.",
+      503
+    );
+  }
+
   try {
     await firestore.collection(COLLECTIONS.auditLogs).limit(1).get();
 
