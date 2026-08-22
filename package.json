@@ -1,0 +1,10 @@
+{
+  "name": "intelligent-purchase-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A static procurement workflow dashboard for purchase requests, vendor scoring, approvals, and purchase orders.",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}
