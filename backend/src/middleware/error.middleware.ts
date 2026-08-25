@@ -6,11 +6,11 @@ import { AppError } from "../utils/errors";
 
 export const errorMiddleware: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof AppError) {
-    return sendError(res, error.code, error.message, error.statusCode, error.details);
+    return sendError(res, error.code, error.message, error.statusCode);
   }
 
   if (error instanceof ZodError) {
-    return sendError(res, "VALIDATION_ERROR", "Request validation failed", 400, error.flatten());
+    return sendError(res, "VALIDATION_ERROR", "Request validation failed", 400);
   }
 
   const firebaseCode = typeof error?.code === "string" ? error.code : undefined;
@@ -20,7 +20,6 @@ export const errorMiddleware: ErrorRequestHandler = (error, _req, res, _next) =>
   }
 
   const message = isProduction ? "Internal server error" : error?.message ?? "Internal server error";
-  const details = isProduction ? undefined : { stack: error?.stack };
 
-  return sendError(res, "INTERNAL_SERVER_ERROR", message, 500, details);
+  return sendError(res, "INTERNAL_SERVER_ERROR", message, 500);
 };

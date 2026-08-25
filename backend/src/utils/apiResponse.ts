@@ -1,25 +1,32 @@
-import type { Response } from "express";
+import { Response } from "express";
 
-export function sendSuccess<T>(res: Response, data: T, statusCode = 200) {
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export function sendSuccess<T>(res: Response, data: T, statusCode = 200): Response {
   return res.status(statusCode).json({
     success: true,
-    data
-  });
+    data,
+  } as ApiResponse<T>);
 }
 
 export function sendError(
   res: Response,
   code: string,
   message: string,
-  statusCode = 500,
-  details?: unknown
-) {
+  statusCode = 400
+): Response {
   return res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
-      ...(details === undefined ? {} : { details })
-    }
-  });
+    },
+  } as ApiResponse<null>);
 }

@@ -1,57 +1,36 @@
 import { Router } from "express";
-import { COLLECTIONS } from "../config/constants";
-import { isFirebaseConfigured } from "../config/env";
-import { firestore, storage } from "../config/firebase";
-import { verifyFirebaseToken } from "../middleware/auth.middleware";
-import { anomalyRouter } from "../modules/anomaly";
-import { auditRouter } from "../modules/audit/audit.routes";
-import { invoiceRouter } from "../modules/invoices";
-import { approvalRouter } from "../modules/approvals";
-import { sendError, sendSuccess } from "../utils/apiResponse";
+import { sendSuccess } from "../utils/apiResponse";
+import { verifyJWTToken } from "../middleware/auth.middleware";
+import authRouter from "./auth.routes";
+import invoiceRouter from "./invoice.routes";
+import organizationRouter from "./organization.routes";
+import vendorRouter from "./vendor.routes";
+// import { anomalyRouter } from "../modules/anomaly";
+// import { auditRouter } from "../modules/audit/audit.routes";
+// import { approvalRouter } from "../modules/approvals";
 
 export const router = Router();
 
 router.get("/health", (_req, res) => {
   return sendSuccess(res, {
-    message: "Backend is running",
+    message: "Backend is running (Firebase removed - MongoDB mode)",
     timestamp: new Date().toISOString()
   });
 });
 
-router.get("/health/firebase", async (_req, res, next) => {
-  if (!isFirebaseConfigured) {
-    return sendError(
-      res,
-      "FIREBASE_NOT_CONFIGURED",
-      "Firebase credentials are not configured for this environment.",
-      503
-    );
-  }
+// MongoDB Authentication Routes
+router.use("/auth", authRouter);
 
-  try {
-    await firestore.collection(COLLECTIONS.auditLogs).limit(1).get();
+// Organization Management Routes
+router.use("/organizations", organizationRouter);
 
-    return sendSuccess(res, {
-      message: "Firebase connection is healthy",
-      services: {
-        firestore: "connected",
-        storage: storage.bucket().name,
-        auth: "configured"
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/auth/me", verifyFirebaseToken, (req, res) => {
-  return sendSuccess(res, {
-    user: req.user
-  });
-});
-
-router.use("/audit", auditRouter);
-router.use("/anomaly", anomalyRouter);
+// Invoice Management Routes
 router.use("/invoices", invoiceRouter);
-router.use("/finance", approvalRouter);
+
+// Vendor Routes (Phase 3)
+router.use("/vendor", vendorRouter);
+
+// Modules temporarily disabled while removing Firebase
+// router.use("/audit", auditRouter);
+// router.use("/anomaly", anomalyRouter);
+// router.use("/finance", approvalRouter);

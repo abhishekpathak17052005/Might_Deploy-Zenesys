@@ -6,11 +6,24 @@ __v0_jsx-dev-runtime.ts
 .v0-trash/
 .vercel/
 
-# Environment variables
-.env*.local
+# ============================================================================
+# ENVIRONMENT VARIABLES - NEVER COMMIT
+# All .env files contain secrets and should not be tracked by Git
+# ============================================================================
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.production.local
 
 # Common ignores
 node_modules
 .next/
 .DS_Store
-.env
+dist/
+dist-ssr/
+*.local
+*.log
+.vscode/
+.idea/
+.tanstack/tmp/

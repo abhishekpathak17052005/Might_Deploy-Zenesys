@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts && tsx src/modules/processing/__tests__/invoiceProcessing.test.ts",
+    "test": "tsx src/__tests__/phase2.organization.test.ts && tsx src/__tests__/phase3.vendor.test.ts && tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts && tsx src/modules/processing/__tests__/invoiceProcessing.test.ts",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx seed.ts"
   },
   "keywords": [
     "invoice",
@@ -20,17 +21,22 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "firebase-admin": "^12.4.0",
+    "groq-sdk": "^1.5.0",
     "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.6.0",
+    "mongoose": "^8.24.4",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "uuid": "^9.0.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/morgan": "^1.9.9",

@@ -6,10 +6,11 @@ InvoiceFlow is an intelligent invoice verification and risk-intelligence platfor
 
 The platform converts vendor invoices into structured financial data, validates them against purchase orders and vendor records, analyzes historical patterns, and surfaces explainable risk findings to finance managers.
 
-**Status:** Phase 2 Implementation Complete ✅
+**Status:** Phase 2 Implementation Complete ✅ | MongoDB Integration In Progress ⏳
 **Architecture:** Deterministic (rule-based, no AI except OCR)
-**Database:** Firebase Firestore + Cloud Storage
-**Authentication:** Firebase Auth (Email/Password)
+**Database:** MongoDB Atlas (Primary) + Firebase Firestore (Legacy)
+**Authentication:** Firebase Auth (Email/Password) + Role-Based Access Control
+**OCR Provider:** Gemini API (Default) | Ollama (Free Alternative)
 
 ---
 
@@ -96,18 +97,19 @@ Firestore Database + Audit Trail
 
 ```
 Might_Deploy-Zenesys/
-├── frontend/
+├── frontend/                        # React + TanStack Start
 │   ├── src/
 │   │   ├── lib/
 │   │   │   └── firebase.ts          # Firebase SDK init
-│   │   ├── app/                     # TanStack Router pages
+│   │   ├── routes/                  # TanStack Router pages
 │   │   ├── components/              # Reusable UI components
 │   │   └── api/
 │   │       └── client.ts            # Centralized API client
 │   ├── .env.local                   # Firebase Web config (local only)
+│   ├── .env.example                 # Template for .env.local
 │   └── package.json
 │
-├── backend/
+├── backend/                         # Express.js API Server
 │   ├── src/
 │   │   ├── config/
 │   │   │   ├── firebase.ts          # Firebase Admin init
@@ -132,17 +134,47 @@ Might_Deploy-Zenesys/
 │   │   │   ├── audit/               # Audit logging
 │   │   │   └── users/               # User management
 │   │   └── app.ts                   # Express app setup
+│   ├── tests/                       # Test & POC scripts
+│   │   ├── test-firebase-auth.js    # Auth test
+│   │   ├── test-gemini-api.ts       # Gemini test
+│   │   └── test-gemini-v*.js        # Gemini variants
 │   ├── .env                         # Firebase Admin + Gemini (local only)
-│   ├── test-firebase-auth.js        # Auth test script
-│   ├── test-gemini.js               # Gemini API test script
+│   ├── .env.example                 # Template for .env
+│   ├── .env.production              # Production config
 │   └── package.json
 │
-├── .gitignore
-├── README.md
-├── FIREBASE_SETUP.md                # Firebase setup guide
-├── FIREBASE_SETUP_COMPLETE.md       # Setup completion report
-└── package.json                     # Root workspace config
+├── docs/                            # 📚 ALL Documentation
+│   ├── audits/                      # Architecture & verification reports
+│   │   ├── ARCHITECTURE_AUDIT.md
+│   │   ├── AUDIT_EXECUTIVE_SUMMARY.md
+│   │   ├── AUDIT_INDEX.md
+│   │   ├── AUDIT_RESULTS.txt
+│   │   └── VERIFICATION_AUDIT.md
+│   ├── deployment/                  # Setup & deployment guides (22 files)
+│   │   ├── QUICK_START.md           # 5-minute quickstart
+│   │   ├── DEPLOYMENT_GUIDE.md      # Render deployment
+│   │   ├── OLLAMA_SETUP.md          # Free OCR setup
+│   │   ├── SECURITY_ENV_SETUP.md    # Secrets management
+│   │   ├── SECRETS_CHECKLIST.md
+│   │   ├── FIREBASE_SETUP.md
+│   │   ├── FIREBASE_SETUP_COMPLETE.md
+│   │   ├── OCR_PROVIDER_COMPARISON.md
+│   │   └── ... (14+ more guides)
+│   ├── CONDITION_STATUS_TABLE.md    # Requirement tracking
+│   ├── PHASE2_VERIFICATION.md       # Phase 2 checklist
+│   ├── REDESIGN_COMPLETE.md         # Redesign summary
+│   └── WORKFLOW_MAPPING.md
+│
+├── .gitignore                       # Protects .env files
+├── FOLDER_STRUCTURE.md              # 📋 Guide to project organization
+├── README.md                        # This file
+├── package.json                     # Root workspace config
+├── tsconfig.json                    # TypeScript config
+├── render.yaml                      # Render deployment config
+└── vite.config.ts                   # Frontend build config
 ```
+
+**See [`FOLDER_STRUCTURE.md`](./FOLDER_STRUCTURE.md) for detailed organization guide.**
 
 ---
 
@@ -269,10 +301,11 @@ app.use(requireAuth, requireRole(['FINANCE_MANAGER']));
 - **Testing:** TSX + Native tests
 
 ### Infrastructure
-- **Database:** Google Cloud Firestore
+- **Database:** MongoDB Atlas (Primary) + Google Cloud Firestore (Legacy)
 - **Storage:** Google Cloud Storage
 - **Auth:** Firebase Authentication
 - **Deployment:** Ready for Render, Vercel, or similar
+- **OCR:** Gemini API (Default) or Ollama (Free Alternative)
 
 ---
 
