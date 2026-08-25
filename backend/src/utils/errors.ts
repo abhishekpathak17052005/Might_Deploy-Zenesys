@@ -17,3 +17,9 @@ export const unauthorized = (message = "Authentication required") =>
 
 export const forbidden = (message = "Insufficient permissions") =>
   new AppError("FORBIDDEN", message, 403);
+
+export const badRequest = (message = "Bad request", details?: unknown) =>
+  new AppError("BAD_REQUEST", message, 400, details);
+
+export const notFound = (message = "Resource not found") =>
+  new AppError("NOT_FOUND", message, 404);

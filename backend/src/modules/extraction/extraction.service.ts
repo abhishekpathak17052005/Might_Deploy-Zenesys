@@ -4,6 +4,7 @@ import { geminiExtractionResponseSchema } from "./extraction.schemas";
 import { validateExtractedInvoiceMath } from "./extraction.validator";
 import { geminiExtractionProvider } from "./geminiExtractionProvider";
 import { ollamaGlmOcrProvider } from "./ollamaGlmOcrProvider";
+import { groqExtractionProvider } from "./groqExtractionProvider";
 import type {
   ExtractionConfidence,
   ExtractionResult,
@@ -46,13 +47,17 @@ function parseDate(value: string | null): Date | null {
 }
 
 export class ExtractionService {
-  constructor(private readonly provider: InvoiceExtractionProvider = this.getProvider()) {}
+  constructor(private readonly provider: InvoiceExtractionProvider = ExtractionService.getProvider()) {}
 
   private static getProvider(): InvoiceExtractionProvider {
     const providerType = process.env.EXTRACTION_PROVIDER || "gemini";
     
     if (providerType === "ollama") {
       return ollamaGlmOcrProvider;
+    }
+    
+    if (providerType === "groq") {
+      return groqExtractionProvider;
     }
     
     return geminiExtractionProvider;
@@ -122,7 +127,7 @@ export class ExtractionService {
       invoice,
       confidence,
       validation,
-      provider: "gemini",
+      provider: process.env.EXTRACTION_PROVIDER || "gemini",
       model: EXTRACTION_MODEL,
       extractedAt: new Date()
     };

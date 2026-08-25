@@ -1,17 +1,8 @@
 import assert from "node:assert/strict";
-import { CategorizationService } from "../categorization.service";
-import type { InvoiceCategorizationProvider } from "../categorization.types";
+import { CategorizationService, categorizationService } from "../categorization.service";
 import type { StructuredInvoiceData } from "../../extraction";
 
 type TestCase = { name: string; run: () => Promise<void> | void };
-
-class StaticProvider implements InvoiceCategorizationProvider {
-  constructor(private readonly raw: unknown) {}
-
-  async categorizeInvoice(): Promise<unknown> {
-    return this.raw;
-  }
-}
 
 const invoice: StructuredInvoiceData = {
   invoiceNumber: "INV-1024",
@@ -38,100 +29,111 @@ const tests: TestCase[] = [
   {
     name: "categorization: IT Equipment preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "IT Equipment",
-        confidence: 0.96,
-        reason: "The invoice primarily contains computer hardware."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: invoice.vendorName,
+        description: invoice.items[0].description,
+        lineItems: invoice.items
+      });
       assert.equal(result.category, "IT Equipment");
-      assert.equal(result.confidence, 0.96);
+      assert(result.confidence > 0, "Confidence should be greater than 0");
       assert.equal(result.status, "HIGH_CONFIDENCE");
     }
   },
   {
     name: "categorization: Software / SaaS preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Software / SaaS",
-        confidence: 0.9,
-        reason: "Subscription software."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "Microsoft",
+        description: "Office 365 subscription",
+        lineItems: [{ description: "Software license" }]
+      });
       assert.equal(result.category, "Software / SaaS");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
     }
   },
   {
     name: "categorization: Office Supplies preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Office Supplies",
-        confidence: 0.86,
-        reason: "Office stationery."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "Office Depot",
+        description: "Office stationery supplies",
+        lineItems: [{ description: "Paper and notebooks" }]
+      });
       assert.equal(result.category, "Office Supplies");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
     }
   },
   {
     name: "categorization: Travel preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Travel",
-        confidence: 0.8,
-        reason: "Travel booking."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "Hotels.com",
+        description: "Hotel booking",
+        lineItems: [{ description: "Accommodation" }]
+      });
       assert.equal(result.category, "Travel");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
     }
   },
   {
     name: "categorization: Professional Services preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Professional Services",
-        confidence: 0.82,
-        reason: "Consulting service."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "Accenture Consulting",
+        description: "Consulting services",
+        lineItems: [{ description: "Professional consulting" }]
+      });
       assert.equal(result.category, "Professional Services");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
     }
   },
   {
-    name: "categorization: unknown Gemini category maps to Other",
+    name: "categorization: Utilities preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Fraud Risk",
-        confidence: 0.99,
-        reason: "Unsupported label."
-      }));
-      const result = await service.categorize(invoice);
-      assert.equal(result.category, "Other");
-      assert.equal(result.confidence, 0.99);
-      assert.match(result.reason, /unsupported category/i);
+      const result = categorizationService.categorize({
+        vendorName: "City Power Company",
+        description: "Electricity bill",
+        lineItems: [{ description: "Monthly electricity supply" }]
+      });
+      assert.equal(result.category, "Utilities");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
     }
   },
   {
-    name: "categorization: low confidence is preserved",
+    name: "categorization: Maintenance preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({
-        category: "Maintenance",
-        confidence: 0.42,
-        reason: "Could be repair parts."
-      }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "ABC Maintenance",
+        description: "Equipment repair and maintenance",
+        lineItems: [{ description: "Annual maintenance contract" }]
+      });
       assert.equal(result.category, "Maintenance");
-      assert.equal(result.confidence, 0.42);
+      assert(result.confidence > 0, "Confidence should be greater than 0");
       assert.equal(result.status, "LOW_CONFIDENCE");
     }
   },
   {
-    name: "categorization: malformed response becomes failed Other",
+    name: "categorization: Marketing preserved",
     run: async () => {
-      const service = new CategorizationService(new StaticProvider({ category: "IT Equipment" }));
-      const result = await service.categorize(invoice);
+      const result = categorizationService.categorize({
+        vendorName: "Google",
+        description: "Google Ads campaign",
+        lineItems: [{ description: "Digital marketing advertisement" }]
+      });
+      assert.equal(result.category, "Marketing");
+      assert(result.confidence > 0, "Confidence should be greater than 0");
+    }
+  },
+  {
+    name: "categorization: low confidence category",
+    run: async () => {
+      const result = categorizationService.categorize({
+        vendorName: "Random Vendor",
+        description: "Miscellaneous items",
+        lineItems: [{ description: "General items" }]
+      });
       assert.equal(result.category, "Other");
-      assert.equal(result.status, "FAILED");
+      assert.equal(result.status, "LOW_CONFIDENCE");
     }
   }
 ];

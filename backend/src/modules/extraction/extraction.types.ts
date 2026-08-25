@@ -70,7 +70,7 @@ export interface ExtractionResult {
   invoice: StructuredInvoiceData;
   confidence: ExtractionConfidence;
   validation: ExtractionValidationResult;
-  provider: "gemini";
+  provider: string;
   model: string;
   extractedAt: Date;
 }

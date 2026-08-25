@@ -26,3 +26,4 @@ dist-ssr/
 *.log
 .vscode/
 .idea/
+.tanstack/tmp/
