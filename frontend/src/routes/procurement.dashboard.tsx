@@ -8,11 +8,13 @@ import {
   Plus,
   ScanLine,
   Wallet,
+  AlertCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, StatCard, StatusChip } from "@/components/kit";
 import { invoices, inr, monthlyVolume, STATUS_LABEL } from "@/lib/mock-data";
+import { apiClient, type InvoiceDocument } from "@/lib/api";
 
 export const Route = createFileRoute("/procurement/dashboard")({
   head: () => ({
@@ -33,37 +35,68 @@ export const Route = createFileRoute("/procurement/dashboard")({
 });
 
 function ProcurementDashboard() {
-  const [procurementData, setProcurementData] = useState<any>(null);
   const [userEmail, setUserEmail] = useState<string>("");
+  const [dashboardInvoices, setDashboardInvoices] = useState<InvoiceDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    submitted: 0,
+    processing: 0,
+    reviewed: 0,
+    approved: 0,
+  });
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const token = localStorage.getItem("firebaseToken");
+        setLoading(true);
+        const token = localStorage.getItem("token");
         const email = localStorage.getItem("userEmail");
         setUserEmail(email || "Officer");
 
         if (!token) {
+          setError("No authentication token");
           return;
         }
 
-        // Dynamic import ensures this only runs on the client
-        const { apiClient } = await import("@/lib/api");
-        const result = await apiClient.getProcurementDashboard(token);
+        // Fetch invoices from backend
+        const result = await apiClient.listInvoices(token);
         if (result.success && result.data) {
-          setProcurementData(result.data);
+          const fetchedInvoices = result.data.documents;
+          setDashboardInvoices(fetchedInvoices);
+
+          // Calculate stats
+          const submitted = fetchedInvoices.length;
+          const processing = fetchedInvoices.filter(
+            (inv) => inv.documentStatus === "PROCESSING" || inv.documentStatus === "EXTRACTION_IN_PROGRESS"
+          ).length;
+          const reviewed = fetchedInvoices.filter(
+            (inv) => inv.documentStatus === "VERIFICATION_IN_PROGRESS" || inv.documentStatus === "RISK_ANALYSIS_IN_PROGRESS"
+          ).length;
+          const approved = fetchedInvoices.filter((inv) => inv.approvalStatus === "APPROVED").length;
+
+          setStats({ submitted, processing, reviewed, approved });
+          setError(null);
+        } else {
+          setError(result.error?.message || "Failed to fetch invoices");
+          // Fall back to mock data
+          setDashboardInvoices(invoices.slice(0, 10));
         }
       } catch (err) {
         console.error("Failed to load procurement dashboard", err);
-        // Fall back to mock data - don't show error
+        // Fall back to mock data
+        setDashboardInvoices(invoices.slice(0, 10));
+      } finally {
+        setLoading(false);
       }
     };
 
     loadDashboard();
   }, []);
 
-  const recent = invoices.slice(0, 4);
+  const recent = dashboardInvoices.slice(0, 4);
   const max = Math.max(...monthlyVolume.map((m) => m.a));
+  const totalValue = recent.reduce((sum, inv) => sum + inv.totalAmount, 0);
 
   return (
     <AppShell
@@ -86,6 +119,15 @@ function ProcurementDashboard() {
         </>
       }
     >
+      {error && (
+        <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4" />
+            <span>{error} (using mock data)</span>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[1fr_1.15fr_1fr]">
         <div className="flex flex-col gap-5">
           <Card className="bg-primary-deep text-primary-foreground">
@@ -96,19 +138,19 @@ function ProcurementDashboard() {
               </div>
               <FileText className="size-5 text-white/70" />
             </div>
-            <p className="mt-8 text-5xl font-extrabold tracking-tight">24</p>
+            <p className="mt-8 text-5xl font-extrabold tracking-tight">{stats.submitted}</p>
             <div className="mt-6 flex items-center justify-between text-xs text-white/70">
-              <span>ABC Technologies · XYZ Systems</span>
-              <span className="font-bold text-primary-foreground">{inr(383000)}</span>
+              <span>Total submitted</span>
+              <span className="font-bold text-primary-foreground">{inr(totalValue)}</span>
             </div>
           </Card>
 
           <StatCard
             icon={<Loader2 className="size-4.5" />}
             label="Processing"
-            value="7"
+            value={stats.processing.toString()}
             hint="Extraction & verification"
-            delta="+2.8%"
+            delta={stats.processing > 0 ? "+2.8%" : "0%"}
           />
         </div>
 
@@ -163,7 +205,7 @@ function ProcurementDashboard() {
               title="Finance Review"
               sub="Awaiting decision"
             />
-            <p className="text-5xl font-extrabold tracking-tight">5</p>
+            <p className="text-5xl font-extrabold tracking-tight">{stats.reviewed}</p>
             <div className="mt-4 h-24 w-full overflow-hidden rounded-2xl bg-primary-soft">
               <svg viewBox="0 0 300 100" className="size-full" preserveAspectRatio="none">
                 <path
@@ -184,9 +226,9 @@ function ProcurementDashboard() {
           <StatCard
             icon={<CheckCircle2 className="size-4.5" />}
             label="Approved"
-            value="12"
+            value={stats.approved.toString()}
             hint="Cleared for payment"
-            delta="+12.8%"
+            delta={stats.approved > 0 ? "+12.8%" : "0%"}
           />
         </div>
       </div>
@@ -195,44 +237,54 @@ function ProcurementDashboard() {
         <Card>
           <CardHead
             icon={<FileText className="size-4.5" />}
-            title="Recent Bills"
+            title={loading ? "Loading Recent Bills..." : "Recent Bills"}
             sub="Latest vendor submissions"
           />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-left">
-              <thead>
-                <tr className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-3">Invoice</th>
-                  <th className="pb-3">Vendor</th>
-                  <th className="pb-3">PO</th>
-                  <th className="pb-3">Status</th>
-                  <th className="pb-3 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((inv) => (
-                  <tr key={inv.id} className="border-t border-border">
-                    <td className="py-3">
-                      <Link
-                        to="/procurement/invoices/$id"
-                        params={{ id: inv.id }}
-                        className="text-sm font-bold hover:text-primary"
-                      >
-                        {inv.invoiceNumber}
-                      </Link>
-                      <p className="text-[11px] text-muted-foreground">{inv.invoiceDate}</p>
-                    </td>
-                    <td className="py-3 text-sm">{inv.vendorName}</td>
-                    <td className="py-3 text-sm text-muted-foreground">{inv.poNumber}</td>
-                    <td className="py-3">
-                      <StatusChip label={STATUS_LABEL[inv.status]} />
-                    </td>
-                    <td className="py-3 text-right text-sm font-bold">{inr(inv.amount)}</td>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : recent.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No invoices submitted yet. <Link to="/procurement/invoices/new" className="text-primary">Upload one</Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left">
+                <thead>
+                  <tr className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <th className="pb-3">Invoice</th>
+                    <th className="pb-3">Vendor</th>
+                    <th className="pb-3">PO</th>
+                    <th className="pb-3">Status</th>
+                    <th className="pb-3 text-right">Amount</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {recent.map((inv) => (
+                    <tr key={inv.id} className="border-t border-border">
+                      <td className="py-3">
+                        <Link
+                          to="/procurement/invoices/$id"
+                          params={{ id: inv.id }}
+                          className="text-sm font-bold hover:text-primary"
+                        >
+                          {inv.invoiceNumber}
+                        </Link>
+                        <p className="text-[11px] text-muted-foreground">{new Date(inv.invoiceDate).toLocaleDateString()}</p>
+                      </td>
+                      <td className="py-3 text-sm">{inv.vendorName || inv.vendorId}</td>
+                      <td className="py-3 text-sm text-muted-foreground">{inv.poNumber || "N/A"}</td>
+                      <td className="py-3">
+                        <StatusChip label={STATUS_LABEL[inv.documentStatus] || inv.documentStatus} />
+                      </td>
+                      <td className="py-3 text-right text-sm font-bold">{inr(inv.totalAmount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
 
         <Card>
@@ -243,11 +295,10 @@ function ProcurementDashboard() {
           />
           <div className="flex flex-col gap-3">
             {[
-              { label: "Extraction", value: 7, total: 24 },
-              { label: "Verification", value: 4, total: 24 },
-              { label: "Risk Analysis", value: 3, total: 24 },
-              { label: "Finance Review", value: 5, total: 24 },
-              { label: "Approved", value: 12, total: 24 },
+              { label: "Submitted", value: stats.submitted },
+              { label: "Processing", value: stats.processing },
+              { label: "Reviewed", value: stats.reviewed },
+              { label: "Approved", value: stats.approved },
             ].map((row) => (
               <div key={row.label}>
                 <div className="mb-1.5 flex items-center justify-between text-xs">
@@ -257,7 +308,7 @@ function ProcurementDashboard() {
                 <div className="h-2 w-full rounded-full bg-muted">
                   <div
                     className="h-2 rounded-full bg-primary"
-                    style={{ width: `${(row.value / row.total) * 100}%` }}
+                    style={{ width: `${stats.submitted > 0 ? (row.value / stats.submitted) * 100 : 0}%` }}
                   />
                 </div>
               </div>

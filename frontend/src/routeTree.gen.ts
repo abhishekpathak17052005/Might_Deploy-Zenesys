@@ -14,10 +14,15 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as FinanceDashboardRouteImport } from './routes/finance.dashboard'
 import { Route as FinanceReviewRouteImport } from './routes/finance.review'
 import { Route as ProcurementDashboardRouteImport } from './routes/procurement.dashboard'
+import { Route as VendorDashboardRouteImport } from './routes/vendor.dashboard'
+import { Route as VendorOrgSearchRouteImport } from './routes/vendor.org-search'
 import { Route as FinanceInvoicesIdRouteImport } from './routes/finance.invoices.$id'
 import { Route as ProcurementInvoicesIndexRouteImport } from './routes/procurement.invoices.index'
 import { Route as ProcurementInvoicesIdRouteImport } from './routes/procurement.invoices.$id'
 import { Route as ProcurementInvoicesNewRouteImport } from './routes/procurement.invoices.new'
+import { Route as VendorInvoiceNewRouteImport } from './routes/vendor.invoice.new'
+import { Route as VendorInvoicesIndexRouteImport } from './routes/vendor.invoices.index'
+import { Route as VendorInvoicesIdRouteImport } from './routes/vendor.invoices.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -44,6 +49,16 @@ const ProcurementDashboardRoute = ProcurementDashboardRouteImport.update({
   path: '/procurement/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VendorDashboardRoute = VendorDashboardRouteImport.update({
+  id: '/vendor/dashboard',
+  path: '/vendor/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VendorOrgSearchRoute = VendorOrgSearchRouteImport.update({
+  id: '/vendor/org-search',
+  path: '/vendor/org-search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FinanceInvoicesIdRoute = FinanceInvoicesIdRouteImport.update({
   id: '/finance/invoices/$id',
   path: '/finance/invoices/$id',
@@ -65,6 +80,21 @@ const ProcurementInvoicesNewRoute = ProcurementInvoicesNewRouteImport.update({
   path: '/procurement/invoices/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VendorInvoiceNewRoute = VendorInvoiceNewRouteImport.update({
+  id: '/vendor/invoice/new',
+  path: '/vendor/invoice/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VendorInvoicesIndexRoute = VendorInvoicesIndexRouteImport.update({
+  id: '/vendor/invoices/',
+  path: '/vendor/invoices/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VendorInvoicesIdRoute = VendorInvoicesIdRouteImport.update({
+  id: '/vendor/invoices/$id',
+  path: '/vendor/invoices/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -72,10 +102,15 @@ export interface FileRoutesByFullPath {
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
+  '/vendor/dashboard': typeof VendorDashboardRoute
+  '/vendor/org-search': typeof VendorOrgSearchRoute
   '/finance/invoices/$id': typeof FinanceInvoicesIdRoute
   '/procurement/invoices/$id': typeof ProcurementInvoicesIdRoute
   '/procurement/invoices/new': typeof ProcurementInvoicesNewRoute
+  '/vendor/invoice/new': typeof VendorInvoiceNewRoute
+  '/vendor/invoices/$id': typeof VendorInvoicesIdRoute
   '/procurement/invoices/': typeof ProcurementInvoicesIndexRoute
+  '/vendor/invoices/': typeof VendorInvoicesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,10 +118,15 @@ export interface FileRoutesByTo {
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
+  '/vendor/dashboard': typeof VendorDashboardRoute
+  '/vendor/org-search': typeof VendorOrgSearchRoute
   '/finance/invoices/$id': typeof FinanceInvoicesIdRoute
   '/procurement/invoices/$id': typeof ProcurementInvoicesIdRoute
   '/procurement/invoices/new': typeof ProcurementInvoicesNewRoute
+  '/vendor/invoice/new': typeof VendorInvoiceNewRoute
+  '/vendor/invoices/$id': typeof VendorInvoicesIdRoute
   '/procurement/invoices': typeof ProcurementInvoicesIndexRoute
+  '/vendor/invoices': typeof VendorInvoicesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,10 +135,15 @@ export interface FileRoutesById {
   '/finance/dashboard': typeof FinanceDashboardRoute
   '/finance/review': typeof FinanceReviewRoute
   '/procurement/dashboard': typeof ProcurementDashboardRoute
+  '/vendor/dashboard': typeof VendorDashboardRoute
+  '/vendor/org-search': typeof VendorOrgSearchRoute
   '/finance/invoices/$id': typeof FinanceInvoicesIdRoute
   '/procurement/invoices/$id': typeof ProcurementInvoicesIdRoute
   '/procurement/invoices/new': typeof ProcurementInvoicesNewRoute
+  '/vendor/invoice/new': typeof VendorInvoiceNewRoute
+  '/vendor/invoices/$id': typeof VendorInvoicesIdRoute
   '/procurement/invoices/': typeof ProcurementInvoicesIndexRoute
+  '/vendor/invoices/': typeof VendorInvoicesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -108,10 +153,15 @@ export interface FileRouteTypes {
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
+    | '/vendor/dashboard'
+    | '/vendor/org-search'
     | '/finance/invoices/$id'
     | '/procurement/invoices/$id'
     | '/procurement/invoices/new'
+    | '/vendor/invoice/new'
+    | '/vendor/invoices/$id'
     | '/procurement/invoices/'
+    | '/vendor/invoices/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -119,10 +169,15 @@ export interface FileRouteTypes {
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
+    | '/vendor/dashboard'
+    | '/vendor/org-search'
     | '/finance/invoices/$id'
     | '/procurement/invoices/$id'
     | '/procurement/invoices/new'
+    | '/vendor/invoice/new'
+    | '/vendor/invoices/$id'
     | '/procurement/invoices'
+    | '/vendor/invoices'
   id:
     | '__root__'
     | '/'
@@ -130,10 +185,15 @@ export interface FileRouteTypes {
     | '/finance/dashboard'
     | '/finance/review'
     | '/procurement/dashboard'
+    | '/vendor/dashboard'
+    | '/vendor/org-search'
     | '/finance/invoices/$id'
     | '/procurement/invoices/$id'
     | '/procurement/invoices/new'
+    | '/vendor/invoice/new'
+    | '/vendor/invoices/$id'
     | '/procurement/invoices/'
+    | '/vendor/invoices/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -142,10 +202,15 @@ export interface RootRouteChildren {
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   FinanceReviewRoute: typeof FinanceReviewRoute
   ProcurementDashboardRoute: typeof ProcurementDashboardRoute
+  VendorDashboardRoute: typeof VendorDashboardRoute
+  VendorOrgSearchRoute: typeof VendorOrgSearchRoute
   FinanceInvoicesIdRoute: typeof FinanceInvoicesIdRoute
   ProcurementInvoicesIdRoute: typeof ProcurementInvoicesIdRoute
   ProcurementInvoicesNewRoute: typeof ProcurementInvoicesNewRoute
+  VendorInvoiceNewRoute: typeof VendorInvoiceNewRoute
+  VendorInvoicesIdRoute: typeof VendorInvoicesIdRoute
   ProcurementInvoicesIndexRoute: typeof ProcurementInvoicesIndexRoute
+  VendorInvoicesIndexRoute: typeof VendorInvoicesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,6 +250,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProcurementDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vendor/dashboard': {
+      id: '/vendor/dashboard'
+      path: '/vendor/dashboard'
+      fullPath: '/vendor/dashboard'
+      preLoaderRoute: typeof VendorDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vendor/org-search': {
+      id: '/vendor/org-search'
+      path: '/vendor/org-search'
+      fullPath: '/vendor/org-search'
+      preLoaderRoute: typeof VendorOrgSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/finance/invoices/$id': {
       id: '/finance/invoices/$id'
       path: '/finance/invoices/$id'
@@ -213,6 +292,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProcurementInvoicesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vendor/invoice/new': {
+      id: '/vendor/invoice/new'
+      path: '/vendor/invoice/new'
+      fullPath: '/vendor/invoice/new'
+      preLoaderRoute: typeof VendorInvoiceNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vendor/invoices/': {
+      id: '/vendor/invoices/'
+      path: '/vendor/invoices'
+      fullPath: '/vendor/invoices/'
+      preLoaderRoute: typeof VendorInvoicesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vendor/invoices/$id': {
+      id: '/vendor/invoices/$id'
+      path: '/vendor/invoices/$id'
+      fullPath: '/vendor/invoices/$id'
+      preLoaderRoute: typeof VendorInvoicesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -222,10 +322,15 @@ const rootRouteChildren: RootRouteChildren = {
   FinanceDashboardRoute: FinanceDashboardRoute,
   FinanceReviewRoute: FinanceReviewRoute,
   ProcurementDashboardRoute: ProcurementDashboardRoute,
+  VendorDashboardRoute: VendorDashboardRoute,
+  VendorOrgSearchRoute: VendorOrgSearchRoute,
   FinanceInvoicesIdRoute: FinanceInvoicesIdRoute,
   ProcurementInvoicesIdRoute: ProcurementInvoicesIdRoute,
   ProcurementInvoicesNewRoute: ProcurementInvoicesNewRoute,
+  VendorInvoiceNewRoute: VendorInvoiceNewRoute,
+  VendorInvoicesIdRoute: VendorInvoicesIdRoute,
   ProcurementInvoicesIndexRoute: ProcurementInvoicesIndexRoute,
+  VendorInvoicesIndexRoute: VendorInvoicesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

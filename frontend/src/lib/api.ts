@@ -16,6 +16,79 @@ export interface ApiResponse<T> {
   };
 }
 
+// ==================== INVOICE TYPES ====================
+
+export interface InvoiceDocument {
+  id: string;
+  invoiceNumber: string;
+  vendorId: string;
+  vendorName?: string;
+  documentStatus: string;
+  invoiceDate: string;
+  totalAmount: number;
+  poNumber?: string;
+  gstin?: string;
+  category?: {
+    category: string;
+    confidence: number;
+  };
+  riskResult?: {
+    riskScore: number;
+    riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    findings: Array<{ type: string; message: string }>;
+  };
+  verificationResult?: {
+    status: string;
+    checks: Record<string, any>;
+  };
+  submittedAt: string;
+  processedAt?: string;
+  approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  uploaderUserId: string;
+  storagePath: string;
+  mimeType: string;
+  originalFilename: string;
+}
+
+export interface UploadedInvoiceResponse {
+  id: string;
+  storagePath: string;
+  documentStatus: string;
+  uploadedAt: string;
+}
+
+export interface ExtractionResult {
+  documentId: string;
+  status: string;
+  invoice: Record<string, any>;
+  category: Record<string, any>;
+  extraction: {
+    status: string;
+    extractedAt: string;
+    confidence: number;
+    provider: string;
+    model: string;
+  };
+  validation: Record<string, any>;
+}
+
+export interface ProcessingResult {
+  documentId: string;
+  status: string;
+  invoice: InvoiceDocument;
+  category?: Record<string, any>;
+  verificationResult?: Record<string, any>;
+  riskResult?: Record<string, any>;
+}
+
+export interface ApprovalResponse {
+  invoiceId: string;
+  decision: "APPROVED" | "REJECTED";
+  approverUserId: string;
+  decisionTimestamp: string;
+  documentStatus: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -83,28 +156,80 @@ class ApiClient {
     }
   }
 
-  // ==================== INVOICE PROCESSING ====================
+  // ==================== INVOICE OPERATIONS ====================
 
   /**
-   * Process invoice through verification workflow.
+   * Upload invoice document.
    */
-  async processInvoice(documentId: string, token: string) {
-    return this.request(`/invoices/${documentId}/process`, {
+  async uploadInvoice(file: File, token: string, invoiceType: string, vendorId: string) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("invoiceType", invoiceType);
+    formData.append("vendorId", vendorId);
+
+    return this.request<UploadedInvoiceResponse>("/invoices/upload", {
+      method: "POST",
+      body: formData,
+      token
+    });
+  }
+
+  /**
+   * Extract invoice document (OCR + categorization).
+   */
+  async extractInvoice(documentId: string, token: string) {
+    return this.request<ExtractionResult>(`/invoices/${documentId}/extract`, {
       method: "POST",
       token
     });
   }
 
   /**
-   * Upload invoice document.
+   * Process invoice through complete verification workflow.
    */
-  async uploadInvoice(file: File, token: string) {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    return this.request("/invoices/upload", {
+  async processInvoice(documentId: string, token: string) {
+    return this.request<ProcessingResult>(`/invoices/${documentId}/process`, {
       method: "POST",
-      body: formData,
+      token
+    });
+  }
+
+  /**
+   * Get invoice detail.
+   */
+  async getInvoice(documentId: string, token: string) {
+    return this.request<InvoiceDocument>(`/invoices/${documentId}`, {
+      method: "GET",
+      token
+    });
+  }
+
+  /**
+   * List invoices for procurement user.
+   */
+  async listInvoices(token: string, limit: number = 20) {
+    return this.request<{ count: number; documents: InvoiceDocument[] }>(`/invoices?limit=${limit}`, {
+      method: "GET",
+      token
+    });
+  }
+
+  /**
+   * Get download URL for invoice document.
+   */
+  async getDownloadUrl(documentId: string, token: string) {
+    return this.request<{ downloadUrl: string; expiresIn: number }>(`/invoices/${documentId}/download`, {
+      method: "GET",
+      token
+    });
+  }
+
+  /**
+   * Delete invoice document.
+   */
+  async deleteInvoice(documentId: string, token: string) {
+    return this.request<{ message: string }>(`/invoices/${documentId}`, {
+      method: "DELETE",
       token
     });
   }
@@ -114,48 +239,32 @@ class ApiClient {
   /**
    * Get invoices pending finance review.
    */
-  async getFinanceReviewQueue(token: string, filters?: { riskLevel?: string }) {
-    const url = new URL(`${this.baseUrl}/finance/review`);
-    if (filters?.riskLevel) {
-      url.searchParams.append("riskLevel", filters.riskLevel);
-    }
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    return response.json();
-  }
-
-  /**
-   * Get invoice detail with all verification results.
-   */
-  async getInvoiceDetail(documentId: string, token: string) {
-    return this.request(`/finance/invoices/${documentId}`, {
+  async getFinanceReviewQueue(token: string, limit: number = 20) {
+    return this.request<{ count: number; invoices: InvoiceDocument[] }>(`/finance/review?limit=${limit}`, {
       method: "GET",
       token
     });
   }
 
   /**
-   * Get invoice processing result.
+   * Get full review packet for an invoice.
    */
-  async getProcessingResult(documentId: string, token: string) {
-    return this.request(`/invoices/${documentId}/processing-result`, {
+  async getInvoiceReviewPacket(documentId: string, token: string) {
+    return this.request<{
+      invoice: InvoiceDocument;
+      approval: Record<string, any> | null;
+      reviewPacket: Record<string, any>;
+    }>(`/finance/invoices/${documentId}`, {
       method: "GET",
       token
     });
   }
-
-  // ==================== APPROVAL WORKFLOW ====================
 
   /**
    * Approve invoice.
    */
   async approveInvoice(documentId: string, token: string, comments?: string) {
-    return this.request(`/invoices/${documentId}/approve`, {
+    return this.request<ApprovalResponse>(`/finance/invoices/${documentId}/approve`, {
       method: "POST",
       body: { comments },
       token
@@ -165,42 +274,27 @@ class ApiClient {
   /**
    * Reject invoice.
    */
-  async rejectInvoice(documentId: string, reason: string, token: string) {
-    return this.request(`/invoices/${documentId}/reject`, {
+  async rejectInvoice(documentId: string, token: string, reason: string) {
+    return this.request<ApprovalResponse>(`/finance/invoices/${documentId}/reject`, {
       method: "POST",
       body: { reason },
       token
     });
   }
 
-  // ==================== PROCUREMENT ====================
-
   /**
-   * Get procurement dashboard data.
+   * Get approval stats.
    */
-  async getProcurementDashboard(token: string) {
-    return this.request("/procurement/dashboard", {
+  async getApprovalStats(token: string) {
+    return this.request<{
+      pending: number;
+      approved: number;
+      rejected: number;
+      totalValue: number;
+    }>(`/finance/stats`, {
       method: "GET",
       token
     });
-  }
-
-  /**
-   * Get list of invoices submitted by procurement officer.
-   */
-  async getSubmittedInvoices(token: string, filters?: { status?: string }) {
-    const url = new URL(`${this.baseUrl}/procurement/invoices`);
-    if (filters?.status) {
-      url.searchParams.append("status", filters.status);
-    }
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    return response.json();
   }
 
   // ==================== UTILITIES ====================
@@ -217,10 +311,11 @@ class ApiClient {
   /**
    * Get current user info.
    */
-  async getCurrentUser(token: string) {
-    return this.request("/auth/me", {
+  async getCurrentUser(token?: string) {
+    const authToken = token || localStorage.getItem("token");
+    return this.request(`/auth/me`, {
       method: "GET",
-      token
+      token: authToken || undefined
     });
   }
 }

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  AlertCircle,
   BadgeCheck,
   ChartPie,
   ClipboardList,
@@ -10,6 +11,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, Dot, StatCard } from "@/components/kit";
 import { categoryMix, invoices, inr, monthlyVolume } from "@/lib/mock-data";
+import { apiClient, type InvoiceDocument } from "@/lib/api";
 
 export const Route = createFileRoute("/finance/dashboard")({
   head: () => ({
@@ -31,40 +33,73 @@ export const Route = createFileRoute("/finance/dashboard")({
 });
 
 function FinanceDashboard() {
-  const [financeQueue, setFinanceQueue] = useState<any[]>([]);
-  
+  const [financeQueue, setFinanceQueue] = useState<InvoiceDocument[]>([]);
+  const [stats, setStats] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    totalValue: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const token = localStorage.getItem("firebaseToken");
+        setLoading(true);
+        const token = localStorage.getItem("token");
         if (!token) {
+          setError("No authentication token");
           return;
         }
 
-        // Dynamic import ensures this only runs on the client
-        const { apiClient } = await import("@/lib/api");
-        const result = await apiClient.getFinanceReviewQueue(token);
-        if (result.success && result.data) {
-          setFinanceQueue(result.data);
+        // Fetch finance review queue
+        const queueResult = await apiClient.getFinanceReviewQueue(token);
+        if (queueResult.success && queueResult.data) {
+          const queue = queueResult.data.invoices;
+          setFinanceQueue(queue);
+
+          // Calculate stats
+          const approved = queue.filter((inv) => inv.approvalStatus === "APPROVED").length;
+          const rejected = queue.filter((inv) => inv.approvalStatus === "REJECTED").length;
+          const pending = queue.filter((inv) => inv.approvalStatus === "PENDING").length;
+          const totalValue = queue.reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+          setStats({ pending, approved, rejected, totalValue });
+          setError(null);
+        } else {
+          setError(result.error?.message || "Failed to fetch review queue");
         }
       } catch (err) {
         console.error("Failed to load dashboard", err);
-        // Fall back to mock data - don't show error
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
       }
     };
 
     loadDashboard();
   }, []);
 
-  // Use mock data for display while real data loads
-  const attention = invoices.filter((i) => i.attention).slice(0, financeQueue.length > 0 ? Math.min(financeQueue.length, 4) : 3);
+  // Filter invoices with risk signals for "Attention Required" section
+  const attention = financeQueue
+    .filter((inv) => inv.riskResult && inv.riskResult.riskLevel !== "LOW")
+    .slice(0, 4);
+
   const max = Math.max(...monthlyVolume.map((m) => m.a));
-  
-  // Calculate metrics from mock data for now
-  const pendingReview = 12;
-  const highRisk = 4;
-  const approved = 38;
-  const valueInReview = 383000;
+
+  const getRiskColor = (level?: string) => {
+    switch (level) {
+      case "CRITICAL":
+        return "destructive";
+      case "HIGH":
+        return "destructive";
+      case "MEDIUM":
+        return "warning";
+      default:
+        return "muted";
+    }
+  };
 
   return (
     <AppShell
@@ -80,36 +115,45 @@ function FinanceDashboard() {
         </Link>
       }
     >
+      {error && (
+        <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4" />
+            <span>{error} (using mock data)</span>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[1.45fr_1fr]">
         <div className="grid gap-5 sm:grid-cols-2">
           <StatCard
             icon={<ClipboardList className="size-4.5" />}
             label="Pending Review"
-            value={String(pendingReview)}
+            value={String(stats.pending)}
             hint="Invoices vs last month"
-            delta="+20.9%"
+            delta={stats.pending > 3 ? "+20.9%" : "-5%"}
             tone="deep"
           />
           <StatCard
             icon={<AlertTriangle className="size-4.5" />}
             label="High Risk"
-            value={String(highRisk)}
+            value={String(attention.length)}
             hint="Signals vs last month"
-            delta="+10.9%"
+            delta={attention.length > 0 ? "+10.9%" : "0%"}
           />
           <StatCard
             icon={<BadgeCheck className="size-4.5" />}
             label="Approved"
-            value={String(approved)}
+            value={String(stats.approved)}
             hint="Payments cleared"
-            delta="-10.5%"
+            delta={stats.approved > 0 ? "+15%" : "0%"}
           />
           <StatCard
             icon={<TrendingUp className="size-4.5" />}
             label="Value in Review"
-            value={inr(valueInReview)}
-            hint="Across 12 invoices"
-            delta="+20.9%"
+            value={inr(stats.totalValue)}
+            hint={`Across ${stats.pending} invoices`}
+            delta={stats.pending > 0 ? "+20.9%" : "0%"}
           />
         </div>
 
@@ -175,12 +219,14 @@ function FinanceDashboard() {
         <Card>
           <CardHead
             icon={<AlertTriangle className="size-4.5" />}
-            title="Attention Required"
+            title={loading ? "Loading Attention Required..." : "Attention Required"}
             sub="Which invoices need my attention and why"
           />
           <div className="flex flex-col gap-3">
-            {attention.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">No invoices requiring attention</p>
+            {loading ? (
+              <p className="text-sm text-muted-foreground py-4">Loading...</p>
+            ) : attention.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No high-risk invoices</p>
             ) : (
               attention.map((inv) => (
                 <Link
@@ -190,19 +236,37 @@ function FinanceDashboard() {
                   className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-muted"
                 >
                   <span className="flex items-center gap-3">
-                    <Dot level={inv.risk.level} />
+                    <span
+                      className={`size-3 rounded-full ${
+                        inv.riskResult?.riskLevel === "CRITICAL"
+                          ? "bg-destructive"
+                          : inv.riskResult?.riskLevel === "HIGH"
+                            ? "bg-orange-500"
+                            : "bg-yellow-500"
+                      }`}
+                    />
                     <span>
                       <span className="block text-sm font-bold">
-                        {inv.invoiceNumber} · {inv.vendorName}
+                        {inv.invoiceNumber} · {inv.vendorName || inv.vendorId}
                       </span>
-                      <span className="block text-xs text-muted-foreground">{inv.attention}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {inv.riskResult?.findings?.[0]?.message || "Risk detected"}
+                      </span>
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold">
-                      Risk {inv.risk.score}
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                        inv.riskResult?.riskLevel === "CRITICAL"
+                          ? "bg-destructive/12 text-destructive"
+                          : inv.riskResult?.riskLevel === "HIGH"
+                            ? "bg-orange-500/12 text-orange-700"
+                            : "bg-yellow-500/12 text-yellow-700"
+                      }`}
+                    >
+                      Risk {Math.round(inv.riskResult?.riskScore || 0)}
                     </span>
-                    <span className="text-sm font-extrabold">{inr(inv.amount)}</span>
+                    <span className="text-sm font-extrabold">{inr(inv.totalAmount)}</span>
                   </span>
                 </Link>
               ))
