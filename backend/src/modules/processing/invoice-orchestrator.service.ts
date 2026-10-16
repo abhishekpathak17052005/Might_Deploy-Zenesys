@@ -173,7 +173,7 @@ export class InvoiceProcessingOrchestrator {
       console.info("orchestrator.step", { step: "vendor_verification" });
       const vendorVerification = vendorVerificationService.verify({
         vendorName: context.invoice.vendorName,
-        gstin: context.invoice.gstin,
+        gstin: context.invoice.gstin || undefined,
         expectedVendorName: context.invoice.vendorName
       });
 
@@ -279,9 +279,9 @@ export class InvoiceProcessingOrchestrator {
 
         result.erp = {
           source: "NETSUITE_MOCK",
-          vendor: erpVendor || undefined,
-          purchaseOrder: erpPO || undefined,
-          glAccount: erpGLAccount || undefined
+          vendor: (erpVendor as unknown as Record<string, unknown>) || undefined,
+          purchaseOrder: (erpPO as unknown as Record<string, unknown>) || undefined,
+          glAccount: (erpGLAccount as unknown as Record<string, unknown>) || undefined
         };
       }
 
@@ -293,13 +293,12 @@ export class InvoiceProcessingOrchestrator {
           vendorName: context.invoice.vendorName,
           invoiceNumber: context.invoice.invoiceNumber,
           invoiceDate: context.invoice.invoiceDate,
-          amount: context.invoice.total,
+          totalAmount: context.invoice.total,
           poNumber: context.invoice.poNumber,
           gstin: context.invoice.gstin,
-          items: (context.invoice.items || []).map((item) => ({
+          lineItems: (context.invoice.items || []).map((item) => ({
             description: item.description,
             quantity: item.quantity,
-            unitPrice: item.unitPrice,
             amount: item.amount
           }))
         },
@@ -310,9 +309,9 @@ export class InvoiceProcessingOrchestrator {
       // Step 7: Aggregate Risk
       console.info("orchestrator.step", { step: "risk_aggregation" });
       result.risk = {
-        score: anomalyResult.score,
-        level: anomalyResult.level,
-        decision: anomalyResult.decision,
+        score: anomalyResult.risk.score,
+        level: anomalyResult.risk.level,
+        decision: anomalyResult.decision.status,
         signals: anomalyResult.signals.map((signal) => ({
           rule: signal.type,
           severity: signal.severity,
@@ -328,7 +327,7 @@ export class InvoiceProcessingOrchestrator {
           severity: signal.severity,
           title: signal.title,
           message: signal.message,
-          data: signal.data
+          data: (signal.metadata ?? {}) as Record<string, unknown>
         });
       }
 

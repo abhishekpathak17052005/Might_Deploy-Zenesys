@@ -30,6 +30,10 @@ export const CATEGORIZATION_KEYWORDS: Record<
       "firewall",
       "nas",
       "storage",
+      "dock",
+      "docking",
+      "docking station",
+      "it supplies",
       "it equipment"
     ],
     secondary: [
@@ -110,7 +114,7 @@ export const CATEGORIZATION_KEYWORDS: Record<
       "workspace"
     ],
     tertiary: ["material", "item", "product", "goods"],
-    negative: ["software", "technology", "equipment", "service"]
+    negative: ["software", "technology", "equipment", "service", "laptop", "computer", "it supplies"]
   },
 
   "Travel": {

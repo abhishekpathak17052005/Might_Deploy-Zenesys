@@ -38,17 +38,17 @@ router.post("/register", async (req: Request, res: Response, next: NextFunction)
 });
 
 /**
- * POST /api/vendor/organizations/search?q=
+ * GET & POST /api/vendor/organizations/search?q=
  * Search organizations by name, legalName, or gstin
  * Returns safe public information only
  */
-router.post(
+router.all(
   "/organizations/search",
   verifyJWTToken,
   requireRole("VENDOR"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { q } = req.query;
+      const q = (req.query.q as string) || (req.body?.q as string);
 
       if (!q || typeof q !== "string") {
         return sendError(res, "VALIDATION_ERROR", "Search query is required", 400);
@@ -143,7 +143,9 @@ router.post(
       const invoice = await invoiceService.submitInvoice(
         req.user!.uid,
         organizationId,
-        req.file.originalname
+        req.file.originalname,
+        req.file.buffer,
+        req.file.mimetype
       );
 
       return sendSuccess(res, { invoice }, 201);

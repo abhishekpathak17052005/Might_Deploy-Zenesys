@@ -1,12 +1,17 @@
 import type { InvoiceExtractionProvider } from "../extraction";
+import { geminiExtractionProvider } from "../extraction/geminiExtractionProvider";
 
 export class JsonBufferExtractionProvider implements InvoiceExtractionProvider {
-  async extractInvoice(input: { documentBuffer: Buffer }): Promise<unknown> {
+  async extractInvoice(input: { documentBuffer: Buffer; mimeType?: string; filename?: string }): Promise<unknown> {
     const text = input.documentBuffer.toString("utf8");
     try {
       return JSON.parse(text) as unknown;
     } catch {
-      throw new Error("Mock extraction document contains malformed JSON.");
+      return geminiExtractionProvider.extractInvoice({
+        documentBuffer: input.documentBuffer,
+        mimeType: input.mimeType || "application/pdf",
+        filename: input.filename || "invoice.pdf"
+      });
     }
   }
 }

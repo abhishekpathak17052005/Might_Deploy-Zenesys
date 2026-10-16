@@ -1,42 +1,95 @@
-import { firestore } from "../../config/firebase";
-import type { InvoiceDocument } from "../invoices/invoice.types";
-import { invoiceDocumentService } from "../invoices/invoice.service";
-import { auditService } from "../audit/audit.service";
+/**
+ * Approval Service - MongoDB implementation
+ * Replaces the previous Firestore-based implementation.
+ * All reads/writes go through Mongoose/MongoDB.
+ */
+import { Invoice, IInvoice } from "../../models/Invoice";
+import { AuditLog } from "../../models/AuditLog";
+import { Types } from "mongoose";
 import type { ApprovalDecision, ApproveInvoiceRequest, RejectInvoiceRequest } from "./approval.types";
 import { v4 as uuidv4 } from "uuid";
 
-const COLLECTIONS = {
-  approvalDecisions: "approvalDecisions",
-  invoiceDocuments: "invoiceDocuments"
-};
+// ============================================================================
+// MongoDB Approval Decision Model (embedded in Invoice + standalone AuditLog)
+// ============================================================================
 
 class ApprovalService {
   /**
    * Approve an invoice (Finance Manager decision).
-   * Updates invoice status to APPROVED and stores approval decision.
+   * Uses atomic conditional update to prevent duplicate approvals.
    */
   async approveInvoice(
     invoiceId: string,
     approverUserId: string,
     approverRole: string,
-    request: ApproveInvoiceRequest
+    request: ApproveInvoiceRequest,
+    organizationId?: string
   ): Promise<ApprovalDecision> {
-    // Verify invoice exists and is in FINANCE_REVIEW_PENDING status
-    const invoice = await invoiceDocumentService.getInvoiceDocument(invoiceId);
-    if (!invoice) {
+    const existing = await Invoice.findById(invoiceId);
+    if (!existing) {
       throw new Error(`Invoice not found: ${invoiceId}`);
     }
 
-    if (invoice.documentStatus !== "FINANCE_REVIEW_PENDING") {
+    // Tenant isolation: verify organization match
+    if (organizationId && existing.organizationId.toString() !== organizationId) {
+      throw new Error("Unauthorized cross-organization access to invoice");
+    }
+
+    // Separation of duties: Prevent uploader from approving their own invoice
+    const uploaderId = (existing.uploadedBy as any)?._id?.toString() || existing.uploadedBy?.toString();
+    if (uploaderId && uploaderId === approverUserId) {
+      throw new Error("Separation of duties violation: Invoice uploader cannot approve their own invoice");
+    }
+
+    const eligibleStatuses = ["FINANCE_REVIEW"];
+    if (!eligibleStatuses.includes(existing.status)) {
       throw new Error(
-        `Cannot approve invoice in ${invoice.documentStatus} status. Expected FINANCE_REVIEW_PENDING.`
+        `Cannot approve invoice in '${existing.status}' status. Must be in one of: ${eligibleStatuses.join(", ")}`
       );
     }
 
     const now = new Date();
     const approvalId = uuidv4();
 
-    const approval: ApprovalDecision = {
+    // Atomic conditional update: only succeeds if invoice is in eligible status
+    const invoice = await Invoice.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(invoiceId),
+        ...(organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {}),
+        status: { $in: eligibleStatuses },
+      },
+      {
+        $set: {
+          status: "APPROVED",
+          approvedBy: new Types.ObjectId(approverUserId),
+          "approvalDecision.decision": "APPROVED",
+          "approvalDecision.approverUserId": approverUserId,
+          "approvalDecision.approverRole": approverRole,
+          "approvalDecision.comments": request.comments,
+          "approvalDecision.timestamp": now,
+          "approvalDecision.id": approvalId,
+        },
+      },
+      { new: true }
+    );
+
+    if (!invoice) {
+      throw new Error(`Invoice update conflict or invalid status during approval: ${invoiceId}`);
+    }
+
+    // Persist audit event
+    await this._persistAuditEvent({
+      organizationId: invoice.organizationId.toString(),
+      actorId: approverUserId,
+      action: "INVOICE_APPROVED",
+      resourceId: invoiceId,
+      previousState: { status: existing.status },
+      newState: { status: "APPROVED", comments: request.comments },
+    });
+
+    console.info("invoice.approved", { invoiceId, approverUserId, approverRole, approvalId });
+
+    return {
       id: approvalId,
       invoiceId,
       decision: "APPROVED",
@@ -45,162 +98,186 @@ class ApprovalService {
       comments: request.comments,
       decisionTimestamp: now,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
-
-    // Store approval decision
-    await firestore.collection(COLLECTIONS.approvalDecisions).doc(approvalId).set(approval);
-
-    // Update invoice status to APPROVED
-    await firestore.collection(COLLECTIONS.invoiceDocuments).doc(invoiceId).update({
-      documentStatus: "APPROVED",
-      approvalDecision: {
-        decision: "APPROVED",
-        approverUserId,
-        approverRole,
-        comments: request.comments,
-        timestamp: now
-      },
-      updatedAt: now
-    });
-
-    console.info("invoice.approved", {
-      invoiceId,
-      approverUserId,
-      approverRole,
-      approvalId
-    });
-
-    return approval;
   }
 
   /**
    * Reject an invoice (Finance Manager decision).
-   * Updates invoice status to REJECTED and stores rejection decision.
    */
   async rejectInvoice(
     invoiceId: string,
     approverUserId: string,
     approverRole: string,
-    request: RejectInvoiceRequest
+    request: RejectInvoiceRequest,
+    organizationId?: string
   ): Promise<ApprovalDecision> {
-    // Verify invoice exists and is in FINANCE_REVIEW_PENDING status
-    const invoice = await invoiceDocumentService.getInvoiceDocument(invoiceId);
-    if (!invoice) {
+    const existing = await Invoice.findById(invoiceId);
+    if (!existing) {
       throw new Error(`Invoice not found: ${invoiceId}`);
     }
 
-    if (invoice.documentStatus !== "FINANCE_REVIEW_PENDING") {
-      throw new Error(
-        `Cannot reject invoice in ${invoice.documentStatus} status. Expected FINANCE_REVIEW_PENDING.`
-      );
+    // Tenant isolation: verify organization match
+    if (organizationId && existing.organizationId.toString() !== organizationId) {
+      throw new Error("Unauthorized cross-organization access to invoice");
+    }
+
+    const eligibleStatuses = ["FINANCE_REVIEW"];
+    if (!eligibleStatuses.includes(existing.status)) {
+      throw new Error(`Cannot reject invoice in '${existing.status}' status.`);
     }
 
     const now = new Date();
     const approvalId = uuidv4();
+    const comments = request.comments || request.reason;
 
-    const approval: ApprovalDecision = {
+    const invoice = await Invoice.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(invoiceId),
+        ...(organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {}),
+        status: { $in: eligibleStatuses },
+      },
+      {
+        $set: {
+          status: "REJECTED",
+          approvedBy: new Types.ObjectId(approverUserId),
+          rejectionReason: request.reason,
+          "approvalDecision.decision": "REJECTED",
+          "approvalDecision.approverUserId": approverUserId,
+          "approvalDecision.approverRole": approverRole,
+          "approvalDecision.comments": comments,
+          "approvalDecision.timestamp": now,
+          "approvalDecision.id": approvalId,
+        },
+      },
+      { new: true }
+    );
+
+    if (!invoice) {
+      throw new Error(`Invoice update conflict or invalid status during rejection: ${invoiceId}`);
+    }
+
+    await this._persistAuditEvent({
+      organizationId: invoice.organizationId.toString(),
+      actorId: approverUserId,
+      action: "INVOICE_REJECTED",
+      resourceId: invoiceId,
+      previousState: { status: existing.status },
+      newState: { status: "REJECTED", reason: request.reason },
+    });
+
+    console.info("invoice.rejected", { invoiceId, approverUserId, approverRole, reason: request.reason, approvalId });
+
+    return {
       id: approvalId,
       invoiceId,
       decision: "REJECTED",
       approverUserId,
       approverRole,
-      comments: request.comments || request.reason,
+      comments,
       decisionTimestamp: now,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
-
-    // Store approval decision
-    await firestore.collection(COLLECTIONS.approvalDecisions).doc(approvalId).set(approval);
-
-    // Update invoice status to REJECTED
-    await firestore.collection(COLLECTIONS.invoiceDocuments).doc(invoiceId).update({
-      documentStatus: "REJECTED",
-      approvalDecision: {
-        decision: "REJECTED",
-        approverUserId,
-        approverRole,
-        comments: request.comments || request.reason,
-        timestamp: now
-      },
-      updatedAt: now
-    });
-
-    console.info("invoice.rejected", {
-      invoiceId,
-      approverUserId,
-      approverRole,
-      reason: request.reason,
-      approvalId
-    });
-
-    return approval;
   }
 
   /**
-   * Get approval decision for an invoice.
+   * Get approval decision for an invoice (from embedded field).
    */
   async getApprovalDecision(invoiceId: string): Promise<ApprovalDecision | null> {
-    const snapshot = await firestore
-      .collection(COLLECTIONS.approvalDecisions)
-      .where("invoiceId", "==", invoiceId)
-      .orderBy("decisionTimestamp", "desc")
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    return snapshot.docs[0].data() as ApprovalDecision;
+    const invoice = await Invoice.findById(invoiceId).select("approvalDecision status");
+    if (!invoice) return null;
+    const ad = (invoice as any).approvalDecision;
+    if (!ad?.decision) return null;
+    return {
+      id: ad.id || "",
+      invoiceId,
+      decision: ad.decision,
+      approverUserId: ad.approverUserId,
+      approverRole: ad.approverRole,
+      comments: ad.comments,
+      decisionTimestamp: ad.timestamp,
+      createdAt: ad.timestamp,
+      updatedAt: ad.timestamp,
+    };
   }
 
   /**
-   * List invoices pending Finance Manager review.
+   * List invoices pending Finance Manager review (org-scoped via invoice lookup).
    */
-  async listPendingReview(limit: number = 20): Promise<InvoiceDocument[]> {
-    const snapshot = await firestore
-      .collection(COLLECTIONS.invoiceDocuments)
-      .where("documentStatus", "==", "FINANCE_REVIEW_PENDING")
-      .orderBy("updatedAt", "desc")
-      .limit(limit)
-      .get();
+  async listPendingReview(limit: number = 20, organizationId?: string): Promise<IInvoice[]> {
+    const reviewStatuses = ["FINANCE_REVIEW"];
+    const query: Record<string, unknown> = { status: { $in: reviewStatuses } };
+    if (organizationId) query.organizationId = new Types.ObjectId(organizationId);
 
-    return snapshot.docs.map((doc) => doc.data() as InvoiceDocument);
+    return await Invoice.find(query)
+      .populate("vendorId", "name gstin")
+      .populate("uploadedBy", "name email")
+      .sort({ createdAt: -1 })
+      .limit(limit);
   }
 
   /**
-   * Get approval stats (for dashboard/reporting).
+   * Get approval stats per organization.
    */
-  async getApprovalStats(): Promise<{
+  async getApprovalStats(organizationId?: string): Promise<{
     pending: number;
     approved: number;
     rejected: number;
+    totalValue: number;
   }> {
-    const [pendingSnap, approvedSnap, rejectedSnap] = await Promise.all([
-      firestore
-        .collection(COLLECTIONS.invoiceDocuments)
-        .where("documentStatus", "==", "FINANCE_REVIEW_PENDING")
-        .count()
-        .get(),
-      firestore
-        .collection(COLLECTIONS.invoiceDocuments)
-        .where("documentStatus", "==", "APPROVED")
-        .count()
-        .get(),
-      firestore
-        .collection(COLLECTIONS.invoiceDocuments)
-        .where("documentStatus", "==", "REJECTED")
-        .count()
-        .get()
+    const orgFilter = organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {};
+    const reviewStatuses = ["FINANCE_REVIEW"];
+
+    const [pending, approved, rejected, valueAgg] = await Promise.all([
+      Invoice.countDocuments({ ...orgFilter, status: { $in: reviewStatuses } }),
+      Invoice.countDocuments({ ...orgFilter, status: "APPROVED" }),
+      Invoice.countDocuments({ ...orgFilter, status: "REJECTED" }),
+      Invoice.aggregate([
+        { $match: { ...orgFilter, status: { $in: reviewStatuses } } },
+        { $group: { _id: null, totalValue: { $sum: "$totalAmount" } } },
+      ]),
     ]);
 
     return {
-      pending: pendingSnap.data().count,
-      approved: approvedSnap.data().count,
-      rejected: rejectedSnap.data().count
+      pending,
+      approved,
+      rejected,
+      totalValue: valueAgg[0]?.totalValue || 0,
     };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private helpers
+  // ──────────────────────────────────────────────────────────────────────────
+
+  private async _persistAuditEvent(params: {
+    organizationId: string;
+    actorId: string;
+    action: string;
+    resourceId: string;
+    previousState?: Record<string, unknown>;
+    newState?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await AuditLog.create({
+        organizationId: new Types.ObjectId(params.organizationId),
+        actorId: new Types.ObjectId(params.actorId),
+        action: params.action,
+        resourceType: "Invoice",
+        resourceId: params.resourceId,
+        previousState: params.previousState,
+        newState: params.newState,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      // Log audit failures but do not roll back the financial decision
+      console.error("audit.write.failed", {
+        action: params.action,
+        resourceId: params.resourceId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   }
 }
 

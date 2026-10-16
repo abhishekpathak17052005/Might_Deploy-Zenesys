@@ -1,11 +1,10 @@
-import { firestore, storage } from "../config/firebase";
+import mongoose from "mongoose";
 
 interface HealthStatus {
   status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   checks: {
-    firestore: boolean;
-    storage: boolean;
+    database: boolean;
     memory: MemoryStatus;
   };
 }
@@ -21,34 +20,21 @@ interface MemoryStatus {
  * Comprehensive health check for backend services
  */
 export async function performHealthCheck(): Promise<HealthStatus> {
+  let dbHealthy = false;
+  try {
+    // 1 = connected, 2 = connecting
+    dbHealthy = mongoose.connection.readyState === 1;
+  } catch (error) {
+    console.error("Database health check failed:", error);
+  }
+
   const checks = {
-    firestore: false,
-    storage: false,
+    database: dbHealthy,
     memory: getMemoryStatus()
   };
 
-  try {
-    // Check Firestore connection
-    await firestore.collection("_health").limit(1).get();
-    checks.firestore = true;
-  } catch (error) {
-    console.error("Firestore health check failed:", error);
-  }
-
-  try {
-    // Check Cloud Storage connection
-    const bucket = storage.bucket();
-    await bucket.exists();
-    checks.storage = true;
-  } catch (error) {
-    console.error("Cloud Storage health check failed:", error);
-  }
-
-  const allHealthy = checks.firestore && checks.storage;
-  const degraded = (checks.firestore || checks.storage) && !allHealthy;
-
   return {
-    status: allHealthy ? "healthy" : degraded ? "degraded" : "unhealthy",
+    status: dbHealthy ? "healthy" : "degraded",
     timestamp: new Date().toISOString(),
     checks
   };

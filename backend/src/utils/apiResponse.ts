@@ -6,6 +6,7 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     message: string;
+    details?: unknown;
   };
 }
 
@@ -20,13 +21,15 @@ export function sendError(
   res: Response,
   code: string,
   message: string,
-  statusCode = 400
+  statusCode = 400,
+  details?: unknown
 ): Response {
   return res.status(statusCode).json({
     success: false,
     error: {
       code,
       message,
+      ...(details ? { details } : {})
     },
   } as ApiResponse<null>);
 }

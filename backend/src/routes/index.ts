@@ -1,19 +1,19 @@
 import { Router } from "express";
 import { sendSuccess } from "../utils/apiResponse";
-import { verifyJWTToken } from "../middleware/auth.middleware";
 import authRouter from "./auth.routes";
 import invoiceRouter from "./invoice.routes";
 import organizationRouter from "./organization.routes";
 import vendorRouter from "./vendor.routes";
-// import { anomalyRouter } from "../modules/anomaly";
-// import { auditRouter } from "../modules/audit/audit.routes";
-// import { approvalRouter } from "../modules/approvals";
+import { approvalRouter } from "../modules/approvals";
+import { auditRouter } from "../modules/audit/audit.routes";
+import { anomalyRouter } from "../modules/anomaly/anomaly.routes";
+import { verifyJWTToken, requireRole } from "../middleware/auth.middleware";
 
 export const router = Router();
 
 router.get("/health", (_req, res) => {
   return sendSuccess(res, {
-    message: "Backend is running (Firebase removed - MongoDB mode)",
+    message: "InvoiceFlow backend running — MongoDB mode",
     timestamp: new Date().toISOString()
   });
 });
@@ -27,10 +27,21 @@ router.use("/organizations", organizationRouter);
 // Invoice Management Routes
 router.use("/invoices", invoiceRouter);
 
-// Vendor Routes (Phase 3)
+// Vendor Routes
 router.use("/vendor", vendorRouter);
 
-// Modules temporarily disabled while removing Firebase
-// router.use("/audit", auditRouter);
-// router.use("/anomaly", anomalyRouter);
-// router.use("/finance", approvalRouter);
+// Finance / Approval Routes
+router.use("/finance", approvalRouter);
+
+// Audit Routes
+router.use("/audit", auditRouter);
+router.use("/anomaly", verifyJWTToken, requireRole("FINANCE_MANAGER", "ORGANIZATION_ADMIN"), anomalyRouter);
+
+// API v1 Compatibility Aliases
+router.use("/v1/vendors", vendorRouter);
+router.use("/v1/vendor", vendorRouter);
+router.use("/v1/invoices", invoiceRouter);
+router.use("/v1/auth", authRouter);
+router.use("/v1/organizations", organizationRouter);
+router.use("/v1/finance", approvalRouter);
+

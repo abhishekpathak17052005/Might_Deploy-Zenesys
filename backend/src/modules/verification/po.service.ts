@@ -107,6 +107,7 @@ export class PoVerificationService {
         amountWithinBalance: false,
         quantityWithinOrder: false,
         remainingBalance: 0,
+        previouslyInvoiced: 0,
         relatedInvoices: [],
         source: "NOT_FOUND",
         message: "No PO number provided. Invoice may be non-PO based.",

@@ -161,7 +161,7 @@ Return ONLY the JSON object, nothing else.`;
     try {
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         method: "GET",
-        timeout: 5000
+        signal: AbortSignal.timeout(5000)
       });
 
       if (!response.ok) {
