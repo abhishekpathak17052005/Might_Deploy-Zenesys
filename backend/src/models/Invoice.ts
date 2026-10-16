@@ -2,6 +2,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type InvoiceStatus = 
   | "SUBMITTED" 
+  | "REVIEW_REQUIRED"
   | "OCR_PROCESSING" 
   | "OCR_COMPLETED" 
   | "PROCUREMENT_REVIEW" 
@@ -18,6 +19,8 @@ export interface OCRResult {
   invoiceDate?: Date;
   poNumber?: string;
   totalAmount?: number;
+  subtotal?: number;
+  taxAmount?: number;
   lineItems?: Array<{
     description?: string;
     quantity?: number;
@@ -25,6 +28,7 @@ export interface OCRResult {
     amount?: number;
   }>;
   confidence?: Record<string, number>;
+  rawConfidence?: unknown;
   extractedAt?: Date;
 }
 
@@ -47,6 +51,8 @@ export interface IInvoice extends Document {
   invoiceDate?: Date;
   dueDate?: Date;
   totalAmount?: number;
+  subtotal?: number;
+  taxAmount?: number;
   gstin?: string;
   poNumber?: string;
   description?: string;
@@ -57,6 +63,7 @@ export interface IInvoice extends Document {
   returnReason?: string;
   procurementReviewedBy?: Types.ObjectId;
   procurementReviewedAt?: Date;
+  procurementExceptionAcknowledged?: boolean;
   procurementDecision?: "VERIFIED" | "RETURNED" | "REJECTED";
   approvalDecision?: {
     decision: "APPROVED" | "REJECTED";
@@ -69,6 +76,14 @@ export interface IInvoice extends Document {
   attachmentUrl?: string;
   attachmentData?: Buffer;
   attachmentMimeType?: string;
+  attachmentSha256?: string;
+  legacyExtractionDiscarded?: unknown;
+  extractionStatus?: "PENDING" | "SUCCEEDED" | "REVIEW_REQUIRED" | "FAILED";
+  extractionError?: string;
+  vendorMatchStatus?: "MATCH" | "MISMATCH" | "UNVERIFIED";
+  poMatchStatus?: "MATCH" | "MISMATCH" | "UNVERIFIED" | "NOT_REQUIRED";
+  riskEvaluationStatus?: "EVALUATED" | "NOT_EVALUATED";
+  riskEvaluatedAt?: Date;
   lineItems: Array<{
     description: string;
     quantity: number;
@@ -124,6 +139,8 @@ const invoiceSchema = new Schema<IInvoice>(
       type: Number,
       min: [0, "Amount cannot be negative"],
     },
+    subtotal: { type: Number, min: 0 },
+    taxAmount: { type: Number, min: 0 },
     gstin: {
       type: String,
       match: [/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}Z\d{1}$/, "Invalid GSTIN format"],
@@ -139,6 +156,7 @@ const invoiceSchema = new Schema<IInvoice>(
       type: String,
       enum: [
         "SUBMITTED",
+        "REVIEW_REQUIRED",
         "OCR_PROCESSING",
         "OCR_COMPLETED",
         "PROCUREMENT_REVIEW",
@@ -170,6 +188,7 @@ const invoiceSchema = new Schema<IInvoice>(
       ref: "User",
     },
     procurementReviewedAt: Date,
+    procurementExceptionAcknowledged: { type: Boolean, default: false },
     procurementDecision: {
       type: String,
       enum: ["VERIFIED", "RETURNED", "REJECTED"],
@@ -183,6 +202,14 @@ const invoiceSchema = new Schema<IInvoice>(
       select: false,
     },
     attachmentMimeType: String,
+    attachmentSha256: String,
+    legacyExtractionDiscarded: { type: Schema.Types.Mixed, select: false },
+    extractionStatus: { type: String, enum: ["PENDING", "SUCCEEDED", "REVIEW_REQUIRED", "FAILED"] },
+    extractionError: String,
+    vendorMatchStatus: { type: String, enum: ["MATCH", "MISMATCH", "UNVERIFIED"] },
+    poMatchStatus: { type: String, enum: ["MATCH", "MISMATCH", "UNVERIFIED", "NOT_REQUIRED"] },
+    riskEvaluationStatus: { type: String, enum: ["EVALUATED", "NOT_EVALUATED"], default: "NOT_EVALUATED" },
+    riskEvaluatedAt: Date,
     lineItems: [
       {
         description: {
@@ -209,6 +236,8 @@ const invoiceSchema = new Schema<IInvoice>(
       invoiceDate: Date,
       poNumber: String,
       totalAmount: Number,
+      subtotal: Number,
+      taxAmount: Number,
       lineItems: [
         {
           description: String,
@@ -219,6 +248,7 @@ const invoiceSchema = new Schema<IInvoice>(
       ],
       confidence: Schema.Types.Mixed,
       extractedAt: Date,
+      rawConfidence: Schema.Types.Mixed,
     },
     // Categorization
     category: {

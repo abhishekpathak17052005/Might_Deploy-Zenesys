@@ -39,6 +39,7 @@ interface InvoiceDetails {
   createdAt: string
   updatedAt: string
   attachmentUrl?: string
+  attachmentMimeType?: string
   ocrResult?: OCRResult
   category?: string
   categoryConfidence?: number
@@ -53,10 +54,16 @@ export function VendorInvoiceDetails() {
   const [invoice, setInvoice] = useState<InvoiceDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchInvoiceDetails()
   }, [id])
+
+  useEffect(() => () => {
+    if (uploadedFileUrl) URL.revokeObjectURL(uploadedFileUrl)
+  }, [uploadedFileUrl])
 
   const fetchInvoiceDetails = async () => {
     setLoading(true)
@@ -72,7 +79,13 @@ export function VendorInvoiceDetails() {
       if (!response.ok) throw new Error('Failed to fetch invoice details')
 
       const json = await response.json()
-      setInvoice(json.data?.invoice || json.invoice)
+      const record = json.data?.invoice || json.invoice
+      setInvoice(record)
+      const fileResponse = await fetch(`${API_BASE}/invoices/${id}/file?stream=true`, {
+        headers: { Authorization: `Bearer ${token || ''}` },
+      })
+      if (fileResponse.ok) setUploadedFileUrl(URL.createObjectURL(await fileResponse.blob()))
+      else setFileError('The uploaded invoice file could not be loaded.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -346,17 +359,11 @@ export function VendorInvoiceDetails() {
         )}
 
         {/* Invoice File */}
-        {invoice.attachmentUrl && (
+        {(
           <div className="bg-white rounded-lg shadow-lg p-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Invoice File</h2>
-            <a
-              href={invoice.attachmentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-semibold"
-            >
-              View/Download Invoice
-            </a>
+            {uploadedFileUrl ? <a href={uploadedFileUrl} target="_blank" rel="noopener noreferrer" className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-semibold">View/Download Invoice</a> : <p className="text-sm text-gray-600">{fileError || "Loading uploaded invoice..."}</p>}
+            {uploadedFileUrl && <div className="mt-5 overflow-hidden rounded-lg border"><iframe src={uploadedFileUrl} title="Uploaded invoice" className="h-[700px] w-full" /></div>}
           </div>
         )}
       </div>

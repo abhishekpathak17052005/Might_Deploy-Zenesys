@@ -23,6 +23,7 @@ function InvoiceStatus() {
   const [outstandingInvoices, setOutstandingInvoices] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
 
@@ -58,7 +59,7 @@ function InvoiceStatus() {
     if (action === "return" && !reason) return;
     setBusy(true);
     const result = action === "verify"
-      ? await apiClient.verifyProcurementInvoice(id, token)
+      ? await apiClient.verifyProcurementInvoice(id, token, reviewConfirmed)
       : await apiClient.returnProcurementInvoice(id, token, reason!);
     setBusy(false);
     if (result.success) window.location.assign("/procurement/dashboard");
@@ -69,11 +70,30 @@ function InvoiceStatus() {
 
   const currentIndex = STATUS_FLOW.indexOf(invoice.status);
   const lineItems = rawInvoice?.lineItems?.length ? rawInvoice.lineItems : rawInvoice?.ocrResult?.lineItems || [];
-  const amount = Number(rawInvoice?.totalAmount ?? rawInvoice?.ocrResult?.totalAmount ?? invoice.amount ?? 0);
+  const amountValue = rawInvoice?.totalAmount ?? rawInvoice?.ocrResult?.totalAmount;
+  const amount = Number(amountValue || 0);
+  const needsExplicitReview = Boolean(rawInvoice?.attachmentSha256 || rawInvoice?.attachmentUrl) && (
+    rawInvoice?.extractionStatus !== "SUCCEEDED" ||
+    rawInvoice?.vendorMatchStatus !== "MATCH" ||
+    !["MATCH", "NOT_REQUIRED"].includes(rawInvoice?.poMatchStatus || "")
+  );
   return (
     <AppShell role="Procurement" title={`Review ${invoice.invoiceNumber}`} subtitle={`${invoice.vendorName} · ${invoice.poNumber}`} actions={<Link to="/procurement/dashboard" className="rounded-full bg-card px-4 py-2.5 text-xs font-semibold shadow-card">Back to dashboard</Link>}>
       <div className="flex flex-col gap-5">
         <InvoiceHeader invoice={{ ...invoice, amount }} />
+        <Card>
+          <CardHead icon={<PackageCheck className="size-4.5" />} title="Source and verification" sub="Fields are linked to this invoice's uploaded file" />
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <p>File SHA-256: <span className="font-mono text-xs">{rawInvoice?.attachmentSha256 || "Not recorded for this upload"}</span></p>
+            <p>OCR: <strong>{rawInvoice?.extractionStatus || "Not recorded"}</strong>{rawInvoice?.extractionError ? ` — ${rawInvoice.extractionError}` : ""}</p>
+            <p>Registered vendor: <strong>{rawInvoice?.vendorId?.name || rawInvoice?.vendorName || "Unverified"}</strong></p>
+            <p>Vendor name on bill: <strong>{rawInvoice?.ocrResult?.vendorName || "Not extracted"}</strong> · match: <strong>{rawInvoice?.vendorMatchStatus || "UNVERIFIED"}</strong></p>
+            <p>Purchase order: <strong>{rawInvoice?.poNumber || "Not present on bill"}</strong> · match: <strong>{rawInvoice?.poMatchStatus || "UNVERIFIED"}</strong></p>
+            <p>Risk evaluation: <strong>{rawInvoice?.riskEvaluationStatus || "NOT_EVALUATED"}</strong></p>
+          </div>
+          {needsExplicitReview && <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-1" /><span>I reviewed the uploaded bill and acknowledge the unresolved OCR, vendor, or PO evidence. This exception will be recorded in the audit log.</span></label>}
+          {amountValue == null && <p className="mt-3 text-sm font-semibold text-amber-700">No amount was extracted. Use the uploaded bill as evidence and resolve it during procurement review.</p>}
+        </Card>
         {error && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
         <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
           <Card>
@@ -92,7 +112,7 @@ function InvoiceStatus() {
         </Card>
         <div className="grid gap-5 lg:grid-cols-2"><InvoiceInformation invoice={invoice} /><Verification invoice={invoice} /><CategoryCard invoice={invoice} /></div>
         <Card><CardHead icon={<Download className="size-4.5" />} title="Original document" sub="Vendor uploaded bill, shown here for review" />{documentUrl ? <><div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/30">{String(rawInvoice?.attachmentMimeType || "").startsWith("image/") ? <img src={documentUrl} alt="Vendor invoice" className="mx-auto max-h-[780px] max-w-full object-contain" /> : <iframe src={documentUrl} title="Vendor invoice document" className="h-[720px] w-full" />}</div><a href={documentUrl} download={rawInvoice?.invoiceNumber || "vendor-invoice"} className="mt-3 inline-flex rounded-full border border-input px-4 py-2 text-sm font-semibold">Download invoice file</a></> : <p className="mt-3 text-sm text-muted-foreground">{documentError || "Loading the uploaded bill..."}</p>}</Card>
-        {(["SUBMITTED", "OCR_COMPLETED", "PROCUREMENT_REVIEW"].includes(String(rawInvoice?.status))) && <div className="flex justify-end gap-3"><button disabled={busy} onClick={() => act("return")} className="rounded-full border border-destructive/40 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50">Return to vendor</button><button disabled={busy} onClick={() => act("verify")} className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">Verify & forward to Finance</button></div>}
+        {(["SUBMITTED", "REVIEW_REQUIRED", "OCR_COMPLETED", "PROCUREMENT_REVIEW"].includes(String(rawInvoice?.status))) && <div className="flex justify-end gap-3"><button disabled={busy} onClick={() => act("return")} className="rounded-full border border-destructive/40 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50">Return to vendor</button><button disabled={busy || (needsExplicitReview && !reviewConfirmed)} onClick={() => act("verify")} className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{needsExplicitReview ? "Acknowledge & forward to Finance" : "Verify & forward to Finance"}</button></div>}
       </div>
     </AppShell>
   );

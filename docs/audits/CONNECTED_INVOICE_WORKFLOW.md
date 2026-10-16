@@ -46,9 +46,13 @@ Procurement transitions are conditional MongoDB updates scoped by organization a
 
 ## Validation
 
-- Backend direct TypeScript check: passed with no output.
-- Frontend production build: passed.
-- Full MongoDB workflow execution: not run in this environment because an isolated test database and authenticated test session were not available.
+- Backend production build: passed (`pnpm build`).
+- Backend direct TypeScript check: passed (`pnpm exec tsc --noEmit`).
+- Frontend diagnostics: no errors reported for the touched workflow files.
+- Frontend production build: passed (`pnpm build`).
+- Release-candidate MongoDB validation: passed all 9 checks.
+- Full backend test script: not green. `phase3.vendor.test.ts` has fixture/setup failures that leave later vendor assertions without a created invoice; the existing test fixture needs repair before the full suite can be claimed green.
+- Full browser workflow execution: not run to completion in this environment because the authenticated Vendor, Procurement, and Finance browser sessions were not all available simultaneously.
 
 ## Remaining Limitations
 

@@ -6,6 +6,7 @@ import { organizationService } from "../services/OrganizationService";
 import { verifyJWTToken, requireRole } from "../middleware/auth.middleware";
 import { sendSuccess, sendError } from "../utils/apiResponse";
 import { badRequest, notFound, forbidden } from "../utils/errors";
+import { extractionService } from "../modules/extraction";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -85,18 +86,6 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { organizationId } = req.body;
-      let lineItems = [];
-      if (typeof req.body.lineItems === "string") {
-        try { lineItems = JSON.parse(req.body.lineItems); } catch { return sendError(res, "VALIDATION_ERROR", "Invoice items are invalid", 400); }
-      }
-      if (!Array.isArray(lineItems) || lineItems.some((item: any) => !item?.description || Number(item.quantity) <= 0 || Number(item.amount) < 0)) {
-        return sendError(res, "VALIDATION_ERROR", "Invoice items must include a description, positive quantity, and amount", 400);
-      }
-      const totalAmount = req.body.totalAmount === undefined || req.body.totalAmount === "" ? undefined : Number(req.body.totalAmount);
-      if (totalAmount !== undefined && (!Number.isFinite(totalAmount) || totalAmount < 0)) {
-        return sendError(res, "VALIDATION_ERROR", "Invoice amount must be a valid non-negative number", 400);
-      }
-
       if (!organizationId) {
         return sendError(res, "VALIDATION_ERROR", "Organization ID is required", 400);
       }
@@ -151,14 +140,21 @@ router.post(
       }
 
       // Submit invoice
-      const invoice = await invoiceService.submitInvoice(
+      let invoice = await invoiceService.submitInvoice(
         req.user!.uid,
         organizationId,
         req.file.originalname,
         req.file.buffer,
-        req.file.mimetype,
-        { invoiceNumber: req.body.invoiceNumber || undefined, totalAmount, lineItems }
+        req.file.mimetype
       );
+
+      try {
+        const extracted = await extractionService.extract({ documentBuffer: req.file.buffer, mimeType: req.file.mimetype, filename: req.file.originalname });
+        invoice = await invoiceService.saveVendorOCRResult(invoice._id.toString(), extracted);
+      } catch (ocrError) {
+        console.error("vendor.invoice.ocr_failed", { invoiceId: invoice._id.toString(), error: ocrError instanceof Error ? ocrError.message : "Unknown OCR error" });
+        invoice = await invoiceService.markVendorExtractionFailed(invoice._id.toString(), ocrError instanceof Error ? ocrError.message : "Invoice extraction failed.");
+      }
 
       return sendSuccess(res, { invoice }, 201);
     } catch (error) {
