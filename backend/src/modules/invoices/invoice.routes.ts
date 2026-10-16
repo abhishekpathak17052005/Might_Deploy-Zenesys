@@ -388,6 +388,32 @@ const handleDocumentDownload = async (req: Request, res: Response): Promise<Resp
     const document = await invoiceDocumentService.getInvoiceDocument(documentId);
 
     if (!document) {
+      // Vendor submissions are stored on the invoice record rather than in the pipeline document store
+      const invoice = await Invoice.findById(documentId).select("+attachmentData attachmentMimeType invoiceNumber vendorName uploadedBy organizationId vendorId");
+      if (invoice && invoice.attachmentData) {
+        const user = await User.findById(userId);
+        const isUploader = invoice.uploadedBy?.toString() === userId;
+        const sameOrganization = Boolean(user?.organizationId && user.organizationId.toString() === invoice.organizationId.toString());
+        const isOrgAdminOrFinance = user?.role === "ORGANIZATION_ADMIN" || user?.role === "FINANCE_MANAGER";
+        let isVendorMatch = false;
+        if (user?.role === "VENDOR") {
+          const { Vendor } = await import("../../models/Vendor");
+          const vendor = await Vendor.findOne({ userId });
+          if (vendor && invoice.vendorId?.toString() === vendor._id.toString()) {
+            isVendorMatch = true;
+          }
+        }
+
+        if (!isUploader && !sameOrganization && !isOrgAdminOrFinance && !isVendorMatch) {
+          return sendError(res, "FORBIDDEN", "No access to this document", 403);
+        }
+
+        res.setHeader("Content-Type", invoice.attachmentMimeType || "application/octet-stream");
+        res.setHeader("Content-Disposition", `inline; filename="${(invoice.attachmentUrl || invoice.invoiceNumber || "invoice").replace(/[\\"\r\n]/g, "_")}"`);
+        res.setHeader("X-Content-SHA256", createHash("sha256").update(invoice.attachmentData).digest("hex"));
+        return res.status(200).send(invoice.attachmentData);
+      }
+
       return sendError(res, "NOT_FOUND", "Invoice document not found", 404);
     }
 

@@ -32,8 +32,8 @@ const envSchema = z.object({
   
   // Gemini AI
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_EXTRACTION_MODEL: z.string().default("gemini-3.6-flash"),
-  GEMINI_CATEGORIZATION_MODEL: z.string().default("gemini-1.5-flash"),
+  GEMINI_EXTRACTION_MODEL: z.string().default("gemini-3.8-flash"),
+  GEMINI_CATEGORIZATION_MODEL: z.string().default("gemini-3.8-flash"),
   EXTRACTION_MONEY_TOLERANCE: z.coerce.number().nonnegative().default(0.01),
   
   // Groq AI
