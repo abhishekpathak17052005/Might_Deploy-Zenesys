@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from "express";
+import { createHash } from "crypto";
 import multer, { type MulterError } from "multer";
 import { z } from "zod";
 import { verifyJWTToken, requireRole } from "../../middleware/auth.middleware";
@@ -159,7 +160,8 @@ invoiceRouter.post(
       const sameOrganization = Boolean(user?.organizationId && user.organizationId.toString() === invoice.organizationId.toString());
       if (!isUploader && !sameOrganization) return sendError(res, "FORBIDDEN", "No access to this document", 403);
       res.setHeader("Content-Type", invoice.attachmentMimeType || "application/octet-stream");
-      res.setHeader("Content-Disposition", `inline; filename="${(invoice.invoiceNumber || "vendor-invoice").replace(/[\\"\r\n]/g, "_")}"`);
+      res.setHeader("Content-Disposition", `inline; filename="${(invoice.attachmentUrl || invoice.invoiceNumber || "vendor-invoice").replace(/[\\"\r\n]/g, "_")}"`);
+      res.setHeader("X-Content-SHA256", invoice.attachmentData ? createHash("sha256").update(invoice.attachmentData).digest("hex") : "");
       return res.status(200).send(invoice.attachmentData);
     }
 
@@ -188,9 +190,7 @@ invoiceRouter.post(
 
       let documentBuffer = await invoiceDocumentService.getDocumentBuffer(document);
       if (!documentBuffer || documentBuffer.length === 0) {
-        documentBuffer = Buffer.from(
-          `INVOICE\nInvoice Number: ${document.invoiceNumber || "INV-" + document.id.slice(0, 8)}\nVendor: ${document.vendorName || document.vendorId || "ABC Technologies"}\nDate: ${new Date().toISOString().slice(0, 10)}\nTotal: INR 29500\nSubtotal: INR 25000\nTax: INR 4500`
-        );
+        throw new Error("Uploaded invoice bytes are missing; extraction cannot use substitute invoice data.");
       }
 
       const extraction = await extractionService.extract({

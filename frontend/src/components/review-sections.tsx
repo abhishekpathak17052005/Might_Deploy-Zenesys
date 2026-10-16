@@ -13,10 +13,10 @@ export function InvoiceHeader({ invoice }: { invoice: Invoice }) {
         </div>
         <div className="text-right">
           <p className="text-xs font-semibold text-white/60">Invoice Total</p>
-          <p className="text-4xl font-extrabold tracking-tight">{inr(invoice.amount)}</p>
+          <p className="text-4xl font-extrabold tracking-tight">{invoice.amount > 0 ? inr(invoice.amount) : "Not extracted"}</p>
           <div className="mt-2 flex justify-end">
             <span className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-extrabold">
-              {invoice.risk.level} RISK · {invoice.risk.score} / 100
+              {invoice.risk.evaluated ? `${invoice.risk.level} RISK · ${invoice.risk.score} / 100` : "RISK NOT EVALUATED"}
             </span>
           </div>
         </div>
@@ -40,9 +40,9 @@ export function InvoiceInformation({ invoice }: { invoice: Invoice }) {
       <Field label="GSTIN" value={invoice.gstin} />
       <Field label="PO Number" value={invoice.poNumber} />
       <Field label="Category" value={invoice.category} />
-      <Field label="Subtotal" value={inr(invoice.subtotal)} />
-      <Field label="GST" value={inr(invoice.gst)} />
-      <Field label="Total" value={inr(invoice.amount)} />
+      <Field label="Subtotal" value={invoice.subtotal > 0 ? inr(invoice.subtotal) : "Not extracted"} />
+      <Field label="GST" value={invoice.gst > 0 ? inr(invoice.gst) : "Not extracted"} />
+      <Field label="Total" value={invoice.amount > 0 ? inr(invoice.amount) : "Not extracted"} />
     </Card>
   );
 }
@@ -87,6 +87,9 @@ export function CategoryCard({ invoice }: { invoice: Invoice }) {
 }
 
 export function RiskAnalysis({ invoice }: { invoice: Invoice }) {
+  if (!invoice.risk.evaluated) {
+    return <Card><CardHead icon={<AlertTriangle className="size-4.5" />} title="Risk Analysis" sub="Backend risk engine output" /><p className="text-sm text-muted-foreground">Risk has not been evaluated for this invoice. Procurement review is required.</p></Card>;
+  }
   const total = invoice.risk.signals.reduce((s, x) => s + x.score, 0);
   return (
     <Card>

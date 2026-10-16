@@ -1,5 +1,6 @@
 export type InvoiceStatus =
   | "SUBMITTED"
+  | "REVIEW_REQUIRED"
   | "EXTRACTION_PENDING"
   | "EXTRACTION_COMPLETE"
   | "VERIFICATION_PENDING"
@@ -10,6 +11,7 @@ export type InvoiceStatus =
 
 export const STATUS_FLOW: InvoiceStatus[] = [
   "SUBMITTED",
+  "REVIEW_REQUIRED",
   "EXTRACTION_PENDING",
   "EXTRACTION_COMPLETE",
   "VERIFICATION_PENDING",
@@ -20,6 +22,7 @@ export const STATUS_FLOW: InvoiceStatus[] = [
 
 export const STATUS_LABEL: Record<InvoiceStatus, string> = {
   SUBMITTED: "Submitted",
+  REVIEW_REQUIRED: "Review Required",
   EXTRACTION_PENDING: "Extraction Pending",
   EXTRACTION_COMPLETE: "Extraction Complete",
   VERIFICATION_PENDING: "Verification Pending",
@@ -60,6 +63,7 @@ export type Invoice = {
   risk: {
     score: number;
     level: RiskLevel;
+    evaluated?: boolean;
     decision: string;
     signals: { code: string; label: string; severity: RiskLevel; score: number; message: string }[];
   };

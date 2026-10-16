@@ -372,13 +372,11 @@ export class InMemoryInvoiceProcessingRepository implements InvoiceProcessingRep
     try {
       const buf = await invoiceDocumentService.getDocumentBuffer(document);
       if (buf && buf.length > 0) return buf;
-    } catch {
-      // Fallback below
+    } catch (error) {
+      throw new Error(`Unable to load the uploaded invoice bytes: ${error instanceof Error ? error.message : "unknown storage error"}`);
     }
 
-    return Buffer.from(
-      `INVOICE\nInvoice Number: ${document.invoiceNumber || "INV-" + document.id.slice(0, 8)}\nVendor: ${document.vendorName || document.vendorId || "ABC Technologies"}\nDate: ${new Date().toISOString().slice(0, 10)}\nTotal: INR 29500\nSubtotal: INR 25000\nTax: INR 4500`
-    );
+    throw new Error("Uploaded invoice bytes are unavailable; refusing to process substitute sample data.");
   }
 
   async updateInvoiceAfterExtraction(

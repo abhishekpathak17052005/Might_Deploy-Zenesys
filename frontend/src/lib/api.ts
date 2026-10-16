@@ -276,9 +276,10 @@ class ApiClient {
     }>(`/invoices/${documentId}/procurement-review`, { method: "GET", token });
   }
 
-  async verifyProcurementInvoice(documentId: string, token: string) {
+  async verifyProcurementInvoice(documentId: string, token: string, reviewConfirmed = false) {
     return this.request<{ invoice: InvoiceDocument }>(`/invoices/${documentId}/procurement/verify`, {
       method: "POST",
+      body: { reviewConfirmed },
       token,
     });
   }

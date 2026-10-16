@@ -12,7 +12,7 @@ export function toInvoiceView(input: any): Invoice {
   return {
     id: String(source._id || source.id || ""),
     invoiceNumber: source.invoiceNumber || "Pending extraction",
-    vendorName: source.vendorName || source.vendorId?.name || "Unknown vendor",
+    vendorName: source.vendorId?.name || source.vendorName || "Unverified vendor",
     gstin: source.gstin || "Not provided",
     poNumber: source.poNumber || "Non-PO",
     category,
@@ -21,8 +21,8 @@ export function toInvoiceView(input: any): Invoice {
     categoryReason: source.category?.reason || "Category from invoice processing",
     invoiceDate: source.invoiceDate ? new Date(source.invoiceDate).toLocaleDateString() : "Pending extraction",
     dueDate: source.dueDate ? new Date(source.dueDate).toLocaleDateString() : "Not provided",
-    subtotal: Number(source.subtotal || amount),
-    gst: Number(source.gstAmount || source.taxAmount || 0),
+    subtotal: Number(source.subtotal ?? source.ocrResult?.subtotal ?? 0),
+    gst: Number(source.gstAmount ?? source.taxAmount ?? source.ocrResult?.taxAmount ?? 0),
     amount,
     currency: "INR",
     status,
@@ -38,6 +38,7 @@ export function toInvoiceView(input: any): Invoice {
     risk: {
       score: Number(risk.riskScore ?? risk.score ?? 0),
       level: riskLevel,
+      evaluated: source.riskEvaluationStatus === "EVALUATED" || Boolean(source.riskResult || source.risk) || (typeof source.riskScore === "number" && Boolean(source.riskLevel)),
       decision: risk.decision || "PENDING_REVIEW",
       signals: findings.map((finding: any, index: number) => ({
         code: finding.code || finding.type || `SIGNAL_${index + 1}`,
@@ -48,7 +49,7 @@ export function toInvoiceView(input: any): Invoice {
       })),
     },
     related: [],
-    poValue: Number(source.poValue || amount),
+    poValue: Number(source.poValue ?? 0),
     approvalThreshold: Number(source.approvalThreshold || 0),
     explanation: (source.explanation || []).map((item: any) => String(item)),
   };

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx src/__tests__/release-candidate.validation.test.ts && tsx src/__tests__/security.regression.test.ts && tsx src/__tests__/phase2.organization.test.ts && tsx src/__tests__/phase3.vendor.test.ts && tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts && tsx src/modules/processing/__tests__/invoiceProcessing.test.ts",
+    "test": "tsx src/__tests__/release-candidate.validation.test.ts && tsx src/__tests__/security.regression.test.ts && tsx src/__tests__/phase2.organization.test.ts && tsx src/__tests__/phase3.vendor.test.ts && tsx src/modules/anomaly/__tests__/anomaly.test.ts && tsx src/modules/invoices/__tests__/invoice.test.ts && tsx src/modules/invoices/__tests__/invoice.routes.test.ts && tsx src/modules/extraction/__tests__/extraction.test.ts && tsx src/modules/extraction/__tests__/invoice-document-mismatch.regression.test.ts && tsx src/__tests__/invoice-document-association.integration.test.ts && tsx src/modules/categorization/__tests__/categorization.test.ts && tsx src/modules/processing/__tests__/invoiceProcessing.test.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx seed.ts"

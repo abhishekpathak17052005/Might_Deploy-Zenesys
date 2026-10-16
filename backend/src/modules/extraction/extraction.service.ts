@@ -29,7 +29,7 @@ function fieldStatus(value: unknown, confidence?: number): FieldExtractionStatus
     return "MISSING";
   }
 
-  return confidence !== undefined && confidence < 0.75 ? "UNCERTAIN" : "EXTRACTED";
+  return confidence === undefined || confidence < 0.75 ? "UNCERTAIN" : "EXTRACTED";
 }
 
 function field<T>(input: Wrapped<T>): FieldExtraction<T> {

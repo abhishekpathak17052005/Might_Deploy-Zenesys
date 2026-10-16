@@ -219,7 +219,7 @@ describe("Phase 3: Vendor Registration, Organization Selection, and Invoice Subm
       assert.equal(submitted.organizationId.toString(), organization._id.toString());
       assert.equal(submitted.vendorId.toString(), vendor._id.toString());
       assert.equal(submitted.uploadedBy.toString(), vendorUser._id.toString());
-      assert.equal(submitted.status, "OCR_PROCESSING");
+      assert.equal(submitted.status, "SUBMITTED");
       assert.equal(submitted.attachmentUrl, "invoice.pdf");
 
       invoice = submitted;
@@ -285,7 +285,7 @@ describe("Phase 3: Vendor Registration, Organization Selection, and Invoice Subm
     it("should filter invoices by status", async () => {
       const result = await invoiceService.listVendorInvoices(
         vendorUser._id.toString(),
-        { status: "OCR_PROCESSING" }
+        { status: "SUBMITTED" }
       );
       assert.equal(result.total, 1);
     });

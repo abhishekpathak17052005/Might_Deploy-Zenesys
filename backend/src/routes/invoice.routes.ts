@@ -64,6 +64,7 @@ invoiceRouter.get("/", verifyJWTToken, async (req: Request, res: Response, next:
 // Returns all invoices that are still in an active/actionable state for the procurement officer.
 const PROCUREMENT_ACTIVE_STATUSES = [
   "SUBMITTED",
+  "REVIEW_REQUIRED",
   "OCR_PROCESSING",
   "OCR_COMPLETED",
   "PROCUREMENT_REVIEW",
@@ -101,7 +102,12 @@ invoiceRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return sendError(res, "UNAUTHORIZED", "User not found", 401);
-      const invoice = await invoiceService.verifyForFinance(req.params.id, req.user.uid, req.user.organizationId);
+      const invoice = await invoiceService.verifyForFinance(
+        req.params.id,
+        req.user.uid,
+        req.user.organizationId,
+        req.body?.reviewConfirmed === true
+      );
       return sendSuccess(res, { invoice });
     } catch (error) {
       next(error);
