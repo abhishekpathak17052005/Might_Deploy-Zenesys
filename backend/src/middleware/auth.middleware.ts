@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
+import mongoose from "mongoose";
 import { verifyToken } from "../config/jwt";
 import { AppError, forbidden, unauthorized } from "../utils/errors";
+import { User } from "../models/User";
 
 export type UserRole = "ORGANIZATION_ADMIN" | "PROCUREMENT_OFFICER" | "FINANCE_MANAGER" | "VENDOR";
 
@@ -9,6 +11,7 @@ declare global {
     interface Request {
       user?: {
         uid: string;
+        userId?: string;
         email: string;
         name: string;
         role?: UserRole;
@@ -39,15 +42,42 @@ export async function verifyJWTToken(req: Request, _res: Response, next: NextFun
     }
 
     const decodedToken = verifyToken(token);
-    const role = isUserRole(decodedToken.role) ? decodedToken.role : undefined;
+    let role = isUserRole(decodedToken.role) ? decodedToken.role : undefined;
+    let organizationId = decodedToken.organizationId;
+    let vendorId = decodedToken.vendorId;
+    let name = decodedToken.email ? decodedToken.email.split("@")[0] : "User";
+
+    // When MongoDB is connected, verify user state in database (disabled user, role changes, deletion)
+    if (mongoose.connection.readyState === 1 && decodedToken.userId && mongoose.Types.ObjectId.isValid(decodedToken.userId)) {
+      const user = await User.findById(decodedToken.userId).select("isActive role organizationId vendorId email name");
+      if (!user) {
+        throw unauthorized("User account not found or removed");
+      }
+      if (user.isActive === false) {
+        throw unauthorized("User account is disabled");
+      }
+      if (user.role && isUserRole(user.role)) {
+        role = user.role;
+      }
+      if (user.organizationId) {
+        organizationId = user.organizationId.toString();
+      }
+      if (user.vendorId) {
+        vendorId = user.vendorId.toString();
+      }
+      if (user.name) {
+        name = user.name;
+      }
+    }
 
     req.user = {
       uid: decodedToken.userId,
+      userId: decodedToken.userId,
       email: decodedToken.email,
-      name: decodedToken.email.split("@")[0],
+      name,
       role,
-      organizationId: decodedToken.organizationId,
-      vendorId: decodedToken.vendorId,
+      organizationId,
+      vendorId,
     };
 
     next();

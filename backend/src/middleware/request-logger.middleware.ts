@@ -33,7 +33,7 @@ export function requestLoggerMiddleware(req: Request, res: Response, next: NextF
       `[${requestId}] ${statusColor}${statusCode}\x1b[0m ${req.method} ${req.path} - ${duration}ms`
     );
 
-    return originalEnd.apply(res, args);
+    return (originalEnd as any).apply(res, args);
   };
 
   next();

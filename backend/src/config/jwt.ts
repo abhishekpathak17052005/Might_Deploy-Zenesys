@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
+import { env } from "./env";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_SECRET = env.JWT_SECRET;
 
 export interface JWTPayload {
   userId: string;

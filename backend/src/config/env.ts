@@ -13,7 +13,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   
   // Database
-  DATABASE_URL: z.string().min(1, "DATABASE_URL must be a valid MongoDB connection string").optional(),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL must be a valid MongoDB connection string").default("mongodb://localhost:27017/InvoiceFlow"),
   
   // JWT Authentication
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required").default("your-secret-key-change-in-production"),
@@ -57,28 +57,36 @@ const envSchema = z.object({
     });
   }
 
-  if (!env.JWT_SECRET || env.JWT_SECRET === "your-secret-key-change-in-production") {
+  // In production, ensure strong, unpredictable JWT secret (min 32 characters, not default)
+  if (!env.JWT_SECRET || env.JWT_SECRET === "your-secret-key-change-in-production" || env.JWT_SECRET.length < 32) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["JWT_SECRET"],
-      message: "JWT_SECRET must be set to a secure value in production"
+      message: "JWT_SECRET must be set to a secure, unpredictable secret of at least 32 characters in production"
     });
   }
 
-  const requiredFirebaseVars = [
-    "FIREBASE_PROJECT_ID",
-    "FIREBASE_CLIENT_EMAIL",
-    "FIREBASE_PRIVATE_KEY",
-    "FIREBASE_STORAGE_BUCKET"
-  ] as const;
+  // Firebase is obsolete in the MongoDB-first architecture and only checked if specifically configured
+  const hasAnyFirebaseVar = Boolean(
+    env.FIREBASE_PROJECT_ID || env.FIREBASE_CLIENT_EMAIL || env.FIREBASE_PRIVATE_KEY || env.FIREBASE_STORAGE_BUCKET
+  );
 
-  for (const key of requiredFirebaseVars) {
-    if (!env[key]) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: `${key} is required in production if using Firebase`
-      });
+  if (hasAnyFirebaseVar) {
+    const requiredFirebaseVars = [
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_CLIENT_EMAIL",
+      "FIREBASE_PRIVATE_KEY",
+      "FIREBASE_STORAGE_BUCKET"
+    ] as const;
+
+    for (const key of requiredFirebaseVars) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when Firebase integration is enabled`
+        });
+      }
     }
   }
 });

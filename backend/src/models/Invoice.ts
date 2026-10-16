@@ -5,6 +5,8 @@ export type InvoiceStatus =
   | "OCR_PROCESSING" 
   | "OCR_COMPLETED" 
   | "PROCUREMENT_REVIEW" 
+  | "FINANCE_REVIEW"
+  | "RETURNED_TO_VENDOR"
   | "APPROVED" 
   | "REJECTED" 
   | "ON_HOLD";
@@ -52,7 +54,21 @@ export interface IInvoice extends Document {
   uploadedBy: Types.ObjectId;
   approvedBy?: Types.ObjectId;
   rejectionReason?: string;
+  returnReason?: string;
+  procurementReviewedBy?: Types.ObjectId;
+  procurementReviewedAt?: Date;
+  procurementDecision?: "VERIFIED" | "RETURNED" | "REJECTED";
+  approvalDecision?: {
+    decision: "APPROVED" | "REJECTED";
+    approverUserId: string;
+    approverRole: string;
+    comments?: string;
+    timestamp: Date;
+    id?: string;
+  };
   attachmentUrl?: string;
+  attachmentData?: Buffer;
+  attachmentMimeType?: string;
   lineItems: Array<{
     description: string;
     quantity: number;
@@ -126,6 +142,8 @@ const invoiceSchema = new Schema<IInvoice>(
         "OCR_PROCESSING",
         "OCR_COMPLETED",
         "PROCUREMENT_REVIEW",
+        "FINANCE_REVIEW",
+        "RETURNED_TO_VENDOR",
         "APPROVED",
         "REJECTED",
         "ON_HOLD",
@@ -146,9 +164,25 @@ const invoiceSchema = new Schema<IInvoice>(
     rejectionReason: {
       type: String,
     },
+    returnReason: String,
+    procurementReviewedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    procurementReviewedAt: Date,
+    procurementDecision: {
+      type: String,
+      enum: ["VERIFIED", "RETURNED", "REJECTED"],
+    },
+    approvalDecision: Schema.Types.Mixed,
     attachmentUrl: {
       type: String,
     },
+    attachmentData: {
+      type: Buffer,
+      select: false,
+    },
+    attachmentMimeType: String,
     lineItems: [
       {
         description: {

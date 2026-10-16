@@ -6,7 +6,8 @@ export interface RegisterInput {
   password: string;
   confirmPassword: string;
   name: string;
-  role?: "PROCUREMENT_OFFICER" | "FINANCE_MANAGER";
+  role?: "ORGANIZATION_ADMIN" | "PROCUREMENT_OFFICER" | "FINANCE_MANAGER" | "VENDOR";
+  organizationId?: string | any;
 }
 
 export interface LoginInput {
@@ -17,6 +18,7 @@ export interface LoginInput {
 export interface AuthResponse {
   user: Omit<IUser, "password">;
   token: string;
+  userId?: string;
 }
 
 export class UserService {
@@ -41,6 +43,7 @@ export class UserService {
       password: input.password,
       name: input.name,
       role: input.role || "PROCUREMENT_OFFICER",
+      organizationId: input.organizationId,
     });
 
     await user.save();
@@ -55,6 +58,7 @@ export class UserService {
     return {
       user: user.toJSON() as unknown as Omit<IUser, "password">,
       token,
+      userId: user._id.toString(),
     };
   }
 
@@ -100,6 +104,7 @@ export class UserService {
     return {
       user: user.toJSON() as unknown as Omit<IUser, "password">,
       token,
+      userId: user._id.toString(),
     };
   }
 

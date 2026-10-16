@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { isProduction } from "../config/env";
 
 /**
  * Simple in-memory rate limiting middleware
@@ -19,6 +20,11 @@ export function rateLimitMiddleware(
   maxRequests: number = 100 // requests per window
 ) {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (!isProduction) {
+      next();
+      return;
+    }
+
     const userId = (req as any).user?.uid || req.ip || "anonymous";
     const now = Date.now();
 

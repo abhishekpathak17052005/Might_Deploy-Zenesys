@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { env } from "./env";
 
 let isConnected = false;
 
@@ -11,7 +12,11 @@ export async function connectDatabase() {
     return;
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl =
+    env.DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.MONGODB_URI ||
+    (process.env.NODE_ENV !== "production" ? "mongodb://localhost:27017/InvoiceFlow" : undefined);
 
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is not set");
@@ -20,13 +25,17 @@ export async function connectDatabase() {
   try {
     console.log("🔄 Connecting to MongoDB...");
 
+    const isTls =
+      databaseUrl.includes("mongodb+srv://") ||
+      databaseUrl.includes("tls=true") ||
+      databaseUrl.includes("ssl=true");
+
     const connection = await mongoose.connect(databaseUrl, {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 10000,
       maxPoolSize: 10,
       minPoolSize: 2,
-      tls: true,
-      tlsInsecure: false,
+      ...(isTls ? { tls: true, tlsInsecure: false } : {}),
       retryWrites: true,
     });
 

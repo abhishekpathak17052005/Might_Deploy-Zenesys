@@ -4,10 +4,12 @@ export interface IAuditLog extends Document {
   organizationId: Types.ObjectId;
   invoiceId?: Types.ObjectId;
   actorId: Types.ObjectId;
-  actorRole: "ORGANIZATION_ADMIN" | "PROCUREMENT_OFFICER" | "FINANCE_MANAGER" | "VENDOR";
+  actorRole?: string;
   action: string;
-  resourceType: "INVOICE" | "ORGANIZATION" | "USER" | "VENDOR" | "PAYMENT";
+  resourceType: string;
   resourceId: string;
+  previousState?: Record<string, any>;
+  newState?: Record<string, any>;
   changes?: {
     before?: Record<string, any>;
     after?: Record<string, any>;
@@ -36,41 +38,25 @@ const auditLogSchema = new Schema<IAuditLog>(
     },
     actorRole: {
       type: String,
-      enum: ["ORGANIZATION_ADMIN", "PROCUREMENT_OFFICER", "FINANCE_MANAGER", "VENDOR"],
-      required: [true, "Actor role is required"],
     },
     action: {
       type: String,
       required: [true, "Action is required"],
-      enum: [
-        "INVOICE_SUBMITTED",
-        "OCR_STARTED",
-        "OCR_COMPLETED",
-        "PROCUREMENT_REVIEW_STARTED",
-        "PROCUREMENT_VERIFIED",
-        "PROCUREMENT_REJECTED",
-        "FINANCE_REVIEW_STARTED",
-        "FINANCE_APPROVED",
-        "FINANCE_REJECTED",
-        "PAYMENT_INITIATED",
-        "PAYMENT_PROCESSING",
-        "PAYMENT_COMPLETED",
-        "INVOICE_DELETED",
-        "ORGANIZATION_CREATED",
-        "USER_ADDED",
-        "USER_REMOVED",
-        "VENDOR_ONBOARDED",
-      ],
     },
     resourceType: {
       type: String,
-      enum: ["INVOICE", "ORGANIZATION", "USER", "VENDOR", "PAYMENT"],
       required: [true, "Resource type is required"],
     },
     resourceId: {
       type: String,
       required: [true, "Resource ID is required"],
       index: true,
+    },
+    previousState: {
+      type: Schema.Types.Mixed,
+    },
+    newState: {
+      type: Schema.Types.Mixed,
     },
     changes: {
       type: Schema.Types.Mixed,
