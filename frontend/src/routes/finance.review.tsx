@@ -4,7 +4,7 @@ import { Inbox, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, Dot, RiskPill } from "@/components/kit";
 import { inr } from "@/lib/mock-data";
-import { apiClient } from "@/lib/api";
+import { apiClient, resolveVendorName } from "@/lib/api";
 import { requireRole } from "@/lib/route-guards";
 
 export const Route = createFileRoute("/finance/review")({
@@ -45,7 +45,7 @@ function ReviewQueue() {
           const mapped = (res.data.invoices || []).map((inv: any) => ({
             id: inv._id || inv.id,
             invoiceNumber: inv.invoiceNumber || inv._id?.slice(0, 8),
-            vendorName: (inv.vendorId as any)?.name || inv.vendorName || "Unknown Vendor",
+            vendorName: resolveVendorName(inv),
             poNumber: inv.poNumber || "Non-PO",
             category: inv.category || "General",
             categoryIcon: "📄",

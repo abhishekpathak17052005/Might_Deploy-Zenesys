@@ -61,6 +61,16 @@ invoiceRouter.get("/", verifyJWTToken, async (req: Request, res: Response, next:
 });
 
 // GET /api/invoices/procurement/pending - Procurement inbox
+// Returns all invoices that are still in an active/actionable state for the procurement officer.
+const PROCUREMENT_ACTIVE_STATUSES = [
+  "SUBMITTED",
+  "OCR_PROCESSING",
+  "OCR_COMPLETED",
+  "PROCUREMENT_REVIEW",
+  "RETURNED_TO_VENDOR",
+  "ON_HOLD",
+];
+
 invoiceRouter.get(
   "/procurement/pending",
   verifyJWTToken,
@@ -68,9 +78,13 @@ invoiceRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.organizationId) return sendError(res, "FORBIDDEN", "User is not associated with an organization", 403);
+      // Allow an explicit ?status= override; otherwise return all active statuses
+      const statusFilter = req.query.status
+        ? (req.query.status as string)
+        : PROCUREMENT_ACTIVE_STATUSES;
       const result = await invoiceService.getOrganizationInvoices(req.user.organizationId, {
-        status: req.query.status as string || "SUBMITTED",
-        limit: Number(req.query.limit) || 20,
+        status: statusFilter,
+        limit: Number(req.query.limit) || 50,
       });
       return sendSuccess(res, result);
     } catch (error) {

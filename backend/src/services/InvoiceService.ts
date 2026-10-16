@@ -252,10 +252,14 @@ export class InvoiceService {
     return await Invoice.findByIdAndUpdate(invoiceId, { riskScore, riskLevel, anomalies, status: "PROCUREMENT_REVIEW" }, { new: true });
   }
 
-  async getOrganizationInvoices(organizationId: string, filters?: { vendorId?: string; status?: string; riskLevel?: string; limit?: number; offset?: number }): Promise<{ invoices: IInvoice[]; total: number }> {
+  async getOrganizationInvoices(organizationId: string, filters?: { vendorId?: string; status?: string | string[]; riskLevel?: string; limit?: number; offset?: number }): Promise<{ invoices: IInvoice[]; total: number }> {
     const query: Record<string, unknown> = { organizationId: new Types.ObjectId(organizationId) };
     if (filters?.vendorId) query.vendorId = new Types.ObjectId(filters.vendorId);
-    if (filters?.status) query.status = filters.status;
+    if (filters?.status) {
+      query.status = Array.isArray(filters.status)
+        ? { $in: filters.status }
+        : filters.status;
+    }
     if (filters?.riskLevel) query.riskLevel = filters.riskLevel;
 
     const limit = filters?.limit || 20;
@@ -274,8 +278,7 @@ export class InvoiceService {
     organizationId: string,
     attachmentUrl?: string,
     attachmentData?: Buffer,
-    attachmentMimeType?: string,
-    details?: { invoiceNumber?: string; totalAmount?: number; lineItems?: Array<{ description: string; quantity: number; unitPrice: number; amount: number }> }
+    attachmentMimeType?: string
   ): Promise<IInvoice> {
     const vendor = await Vendor.findOne({ userId });
     if (!vendor) {
@@ -295,9 +298,6 @@ export class InvoiceService {
       vendorName: vendor.name,
       uploadedBy: new Types.ObjectId(userId),
       status: "SUBMITTED",
-      invoiceNumber: details?.invoiceNumber,
-      totalAmount: details?.totalAmount,
-      lineItems: details?.lineItems || [],
       attachmentUrl,
       attachmentData,
       attachmentMimeType,
@@ -305,6 +305,33 @@ export class InvoiceService {
 
     await invoice.save();
     return invoice;
+  }
+
+  async saveVendorOCRResult(invoiceId: string, extracted: import("../modules/extraction").ExtractionResult): Promise<void> {
+    const data = extracted.invoice;
+    await Invoice.findByIdAndUpdate(invoiceId, {
+      $set: {
+        invoiceNumber: data.invoiceNumber || undefined,
+        invoiceDate: Number.isNaN(data.invoiceDate.getTime()) ? undefined : data.invoiceDate,
+        vendorName: data.vendorName || undefined,
+        gstin: data.gstin || undefined,
+        poNumber: data.poNumber || undefined,
+        totalAmount: data.total,
+        description: data.items.map((item) => item.description).filter(Boolean).join(", ") || undefined,
+        lineItems: data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })),
+        ocrResult: {
+          invoiceNumber: data.invoiceNumber,
+          invoiceDate: Number.isNaN(data.invoiceDate.getTime()) ? undefined : data.invoiceDate,
+          vendorName: data.vendorName,
+          gstin: data.gstin || undefined,
+          poNumber: data.poNumber || undefined,
+          totalAmount: data.total,
+          lineItems: data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })),
+          extractedAt: extracted.extractedAt,
+        },
+        status: "OCR_COMPLETED",
+      },
+    });
   }
 
   async verifyForFinance(invoiceId: string, reviewerId: string, organizationId?: string): Promise<IInvoice> {

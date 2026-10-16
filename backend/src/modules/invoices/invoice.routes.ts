@@ -8,6 +8,7 @@ import { categorizationService } from "../categorization";
 import { extractionService } from "../extraction";
 import { invoiceProcessingService } from "../processing";
 import { User } from "../../models/User";
+import { Invoice } from "../../models/Invoice";
 import { uploadInvoiceDocumentRequestSchema } from "./invoice.schema";
 import { invoiceDocumentService } from "./invoice.service";
 import type { UploadInvoiceDocumentResponse } from "./invoice.types";
@@ -150,7 +151,16 @@ invoiceRouter.post(
     const document = await invoiceDocumentService.getInvoiceDocument(documentId);
 
     if (!document) {
-      return sendError(res, "NOT_FOUND", "Invoice document not found", 404);
+      // Vendor submissions are stored on the invoice record rather than in the pipeline document store.
+      const invoice = await Invoice.findById(documentId).select("+attachmentData attachmentMimeType invoiceNumber vendorName uploadedBy organizationId");
+      if (!invoice || !invoice.attachmentData) return sendError(res, "NOT_FOUND", "Invoice document not found", 404);
+      const user = await User.findById(userId);
+      const isUploader = invoice.uploadedBy.toString() === userId;
+      const sameOrganization = Boolean(user?.organizationId && user.organizationId.toString() === invoice.organizationId.toString());
+      if (!isUploader && !sameOrganization) return sendError(res, "FORBIDDEN", "No access to this document", 403);
+      res.setHeader("Content-Type", invoice.attachmentMimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", `inline; filename="${(invoice.invoiceNumber || "vendor-invoice").replace(/[\\"\r\n]/g, "_")}"`);
+      return res.status(200).send(invoice.attachmentData);
     }
 
     if (document.uploaderUserId !== userId && req.user?.role !== "ORGANIZATION_ADMIN") {

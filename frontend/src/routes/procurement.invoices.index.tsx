@@ -4,7 +4,7 @@ import { FileText, Plus, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, StatusChip } from "@/components/kit";
 import { inr, STATUS_LABEL } from "@/lib/mock-data";
-import { apiClient } from "@/lib/api";
+import { apiClient, resolveVendorName } from "@/lib/api";
 import { requireRole } from "@/lib/route-guards";
 
 export const Route = createFileRoute("/procurement/invoices/")({
@@ -45,7 +45,7 @@ function InvoiceList() {
             id: doc.id,
             invoiceNumber: doc.invoiceNumber || doc.id.slice(0, 8),
             invoiceDate: doc.invoiceDate ? new Date(doc.invoiceDate).toLocaleDateString() : new Date(doc.submittedAt).toLocaleDateString(),
-            vendorName: doc.vendorName || "Unknown Vendor",
+            vendorName: resolveVendorName(doc),
             poNumber: doc.poNumber || "Non-PO",
             category: doc.category?.category || "General",
             categoryIcon: "📄",

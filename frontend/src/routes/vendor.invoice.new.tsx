@@ -23,11 +23,6 @@ export function VendorInvoiceNew() {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [selectedOrgId, setSelectedOrgId] = useState('')
   const [attachment, setAttachment] = useState<File | null>(null)
-  const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [totalAmount, setTotalAmount] = useState('')
-  const [material, setMaterial] = useState('')
-  const [quantity, setQuantity] = useState('1')
-  const [materialAmount, setMaterialAmount] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -95,9 +90,6 @@ export function VendorInvoiceNew() {
       const formData = new FormData()
       formData.append('invoice', attachment)
       formData.append('organizationId', selectedOrgId)
-      formData.append('invoiceNumber', invoiceNumber)
-      formData.append('totalAmount', totalAmount)
-      formData.append('lineItems', JSON.stringify(material.trim() ? [{ description: material.trim(), quantity: Number(quantity), unitPrice: Number(materialAmount) / Math.max(1, Number(quantity)), amount: Number(materialAmount) }] : []))
 
       const response = await fetch(`${API_BASE}/vendor/invoices`, {
         method: 'POST',
@@ -227,14 +219,6 @@ export function VendorInvoiceNew() {
                 </div>
               </label>
             </div>
-          </div>
-
-          <div className="mb-8 grid gap-4 sm:grid-cols-2">
-            <div><label className="mb-2 block font-bold text-gray-700">Invoice number</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="e.g. INV-1042" /></div>
-            <div><label className="mb-2 block font-bold text-gray-700">Invoice total (₹)</label><input type="number" min="0" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="0.00" /></div>
-            <div><label className="mb-2 block font-bold text-gray-700">Material / service supplied</label><input value={material} onChange={(e) => setMaterial(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="Describe supplied goods or service" /></div>
-            <div className="grid grid-cols-2 gap-3"><div><label className="mb-2 block font-bold text-gray-700">Quantity</label><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" /></div><div><label className="mb-2 block font-bold text-gray-700">Line amount (₹)</label><input type="number" min="0" step="0.01" value={materialAmount} onChange={(e) => setMaterialAmount(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="0.00" /></div></div>
-            <p className="text-sm text-gray-500 sm:col-span-2">Add the invoice details so Procurement can review the materials and amount alongside your uploaded bill.</p>
           </div>
 
           {/* Submit Button */}

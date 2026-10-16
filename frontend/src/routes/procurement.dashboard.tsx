@@ -78,15 +78,17 @@ function ProcurementDashboard() {
           }));
           setDashboardInvoices(fetchedInvoices);
 
-          // Calculate stats
+          // Calculate stats from real Invoice statuses
           const submitted = fetchedInvoices.length;
           const processing = fetchedInvoices.filter(
-            (inv) => inv.documentStatus === "PROCESSING" || inv.documentStatus === "EXTRACTION_IN_PROGRESS"
+            (inv) => inv.documentStatus === "OCR_PROCESSING" || inv.documentStatus === "OCR_COMPLETED"
           ).length;
           const reviewed = fetchedInvoices.filter(
-            (inv) => inv.documentStatus === "VERIFICATION_IN_PROGRESS" || inv.documentStatus === "RISK_ANALYSIS_IN_PROGRESS"
+            (inv) => inv.documentStatus === "FINANCE_REVIEW" || inv.documentStatus === "PROCUREMENT_REVIEW"
           ).length;
-          const approved = fetchedInvoices.filter((inv) => inv.approvalStatus === "APPROVED").length;
+          const approved = fetchedInvoices.filter(
+            (inv) => inv.documentStatus === "APPROVED"
+          ).length;
 
           setStats({ submitted, processing, reviewed, approved });
           setError(null);

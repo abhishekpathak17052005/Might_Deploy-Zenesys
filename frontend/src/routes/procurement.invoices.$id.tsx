@@ -23,6 +23,8 @@ function InvoiceStatus() {
   const [outstandingInvoices, setOutstandingInvoices] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || "";
@@ -35,6 +37,19 @@ function InvoiceStatus() {
         setOutstandingInvoices(result.data.outstandingInvoices || []);
       } else setError(result.error?.message || "Invoice could not be loaded");
     }).catch((err) => setError(err instanceof Error ? err.message : "Invoice could not be loaded"));
+  }, [id]);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || "";
+    fetch(`${import.meta.env["VITE_API_URL"] || "http://localhost:5000/api"}/invoices/${id}/file?stream=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("The uploaded bill could not be loaded");
+      objectUrl = URL.createObjectURL(await response.blob());
+      setDocumentUrl(objectUrl);
+    }).catch((err) => setDocumentError(err instanceof Error ? err.message : "The uploaded bill could not be loaded"));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [id]);
 
   const act = async (action: "verify" | "return") => {
@@ -76,7 +91,7 @@ function InvoiceStatus() {
           <div className="flex flex-wrap gap-4">{STATUS_FLOW.map((step, i) => { const label = STATUS_LABEL[step]; const done = i < currentIndex; const active = i === currentIndex; return <div key={step} className="flex min-w-[130px] flex-1 flex-col gap-2"><div className="h-1.5 w-full rounded-full bg-muted"><div className={`h-1.5 rounded-full ${done ? "bg-primary" : active ? "bg-accent" : "bg-transparent"}`} style={{ width: done ? "100%" : active ? "55%" : "0%" }} /></div><span className="text-xs font-semibold">{label}</span></div>; })}</div>
         </Card>
         <div className="grid gap-5 lg:grid-cols-2"><InvoiceInformation invoice={invoice} /><Verification invoice={invoice} /><CategoryCard invoice={invoice} /></div>
-        <Card><CardHead icon={<Download className="size-4.5" />} title="Original document" sub="Review the vendor’s uploaded bill" /><button onClick={async () => { const token = localStorage.getItem("token") || ""; const result = await apiClient.getDownloadUrl(id, token); if (result.success && result.data?.downloadUrl) window.open(result.data.downloadUrl, "_blank", "noopener,noreferrer"); else setError(result.error?.message || "Could not download invoice"); }} className="rounded-full border border-input px-4 py-2 text-sm font-semibold">Open invoice file</button></Card>
+        <Card><CardHead icon={<Download className="size-4.5" />} title="Original document" sub="Vendor uploaded bill, shown here for review" />{documentUrl ? <><div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/30">{String(rawInvoice?.attachmentMimeType || "").startsWith("image/") ? <img src={documentUrl} alt="Vendor invoice" className="mx-auto max-h-[780px] max-w-full object-contain" /> : <iframe src={documentUrl} title="Vendor invoice document" className="h-[720px] w-full" />}</div><a href={documentUrl} download={rawInvoice?.invoiceNumber || "vendor-invoice"} className="mt-3 inline-flex rounded-full border border-input px-4 py-2 text-sm font-semibold">Download invoice file</a></> : <p className="mt-3 text-sm text-muted-foreground">{documentError || "Loading the uploaded bill..."}</p>}</Card>
         {(["SUBMITTED", "OCR_COMPLETED", "PROCUREMENT_REVIEW"].includes(String(rawInvoice?.status))) && <div className="flex justify-end gap-3"><button disabled={busy} onClick={() => act("return")} className="rounded-full border border-destructive/40 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50">Return to vendor</button><button disabled={busy} onClick={() => act("verify")} className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">Verify & forward to Finance</button></div>}
       </div>
     </AppShell>
