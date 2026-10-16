@@ -28,6 +28,7 @@ export const Route = createFileRoute("/finance/review")({
 
 function ReviewQueue() {
   const [queue, setQueue] = useState<any[]>([]);
+  const [awaitingProcurement, setAwaitingProcurement] = useState<any[]>([]);
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,18 +59,22 @@ function ReviewQueue() {
           })).sort((a: any, b: any) => b.risk.score - a.risk.score);
 
           setQueue(mapped);
+          setAwaitingProcurement(res.data.awaitingProcurement || []);
           setIsLive(true);
           setError(null);
         } else {
           setQueue([]);
+          setAwaitingProcurement([]);
           setError(res.error?.message || "Failed to load review queue");
         }
       } catch (err) {
         setQueue([]);
+        setAwaitingProcurement([]);
         setError(err instanceof Error ? err.message : "Failed to load review queue");
       }
     } else {
       setQueue([]);
+      setAwaitingProcurement([]);
       setError("Please sign in to view the finance review queue");
     }
     setLoading(false);
@@ -129,6 +134,29 @@ function ReviewQueue() {
           {!loading && queue.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No invoices awaiting review.</p>}
         </div>
       </Card>
+      {awaitingProcurement.length > 0 && <Card>
+        <CardHead
+          icon={<Inbox className="size-4.5" />}
+          title="Visible to Finance · Awaiting Procurement"
+          sub="Read-only invoices. Procurement must verify and forward them before a finance decision."
+        />
+        <div className="flex flex-col gap-3">
+          {awaitingProcurement.map((inv: any) => (
+            <Link
+              key={inv._id || inv.id}
+              to="/finance/invoices/$id"
+              params={{ id: inv._id || inv.id }}
+              className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border p-4 transition-colors hover:bg-muted"
+            >
+              <span>
+                <span className="block text-sm font-bold">{inv.invoiceNumber || (inv._id || inv.id).slice(0, 8)}</span>
+                <span className="block text-xs text-muted-foreground">{resolveVendorName(inv)} · {String(inv.status || "SUBMITTED").replaceAll("_", " ")}</span>
+              </span>
+              <span className="text-sm font-extrabold">{inr(inv.totalAmount || 0)}</span>
+            </Link>
+          ))}
+        </div>
+      </Card>}
     </AppShell>
   );
 }

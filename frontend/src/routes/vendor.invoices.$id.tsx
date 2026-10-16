@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { requireRole } from '@/lib/route-guards'
+import { ArrowDownToLine, ArrowLeft, ArrowUpRight, Check, Circle, Clock3, FileCheck2, FileText, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
 const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 import { useEffect, useState } from 'react'
 
@@ -17,10 +18,14 @@ interface OCRResult {
   totalAmount?: number
   lineItems?: Array<{
     description?: string
-    quantity?: number
-    unitPrice?: number
-    amount?: number
+    quantity?: number | null
+    unitPrice?: number | null
+    amount?: number | null
   }>
+  rawText?: string
+  provider?: string
+  extractedAt?: string
+  fieldProvenance?: Record<string, { value?: unknown; source?: string | null; confidence?: number | null }>
 }
 
 interface Anomaly {
@@ -46,6 +51,16 @@ interface InvoiceDetails {
   riskScore?: number
   riskLevel?: string
   anomalies?: Anomaly[]
+  extractionStatus?: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'REVIEW_REQUIRED' | 'FAILED'
+  extractionError?: string
+  riskEvaluationStatus?: 'EVALUATED' | 'NOT_EVALUATED'
+  vendorMatchStatus?: 'MATCH' | 'MISMATCH' | 'UNVERIFIED'
+  poMatchStatus?: 'MATCH' | 'MISMATCH' | 'UNVERIFIED' | 'NOT_REQUIRED'
+  procurementReviewedAt?: string
+  procurementDecision?: 'VERIFIED' | 'RETURNED' | 'REJECTED'
+  rejectionReason?: string
+  returnReason?: string
+  approvalDecision?: { decision: 'APPROVED' | 'REJECTED'; comments?: string; timestamp: string }
 }
 
 export function VendorInvoiceDetails() {
@@ -56,17 +71,47 @@ export function VendorInvoiceDetails() {
   const [error, setError] = useState<string | null>(null)
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [reprocessing, setReprocessing] = useState(false)
+  const [reprocessMessage, setReprocessMessage] = useState<string | null>(null)
+
+  const retryExtraction = async () => {
+    setReprocessing(true)
+    setReprocessMessage(null)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/vendor/invoices/${encodeURIComponent(id)}/reprocess`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token || ''}` },
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error?.message || 'Invoice reprocessing failed.')
+      const updated = result.data?.invoice || result.invoice
+      if (!updated) throw new Error('The server did not return the updated invoice.')
+      setInvoice(updated)
+      setReprocessMessage(updated.extractionError || 'Extraction completed. Review the extracted fields against the uploaded bill.')
+    } catch (err) {
+      setReprocessMessage(err instanceof Error ? err.message : 'Invoice reprocessing failed.')
+    } finally {
+      setReprocessing(false)
+    }
+  }
 
   useEffect(() => {
     fetchInvoiceDetails()
   }, [id])
 
+  useEffect(() => {
+    if (!invoice || ['APPROVED', 'REJECTED', 'WITHDRAWN'].includes(invoice.status)) return
+    const interval = window.setInterval(() => { void fetchInvoiceDetails(false) }, 20000)
+    return () => window.clearInterval(interval)
+  }, [id, invoice?._id, invoice?.status])
+
   useEffect(() => () => {
     if (uploadedFileUrl) URL.revokeObjectURL(uploadedFileUrl)
   }, [uploadedFileUrl])
 
-  const fetchInvoiceDetails = async () => {
-    setLoading(true)
+  const fetchInvoiceDetails = async (loadFile = true) => {
+    if (loadFile) setLoading(true)
     setError(null)
     try {
       const token = localStorage.getItem('token')
@@ -81,15 +126,17 @@ export function VendorInvoiceDetails() {
       const json = await response.json()
       const record = json.data?.invoice || json.invoice
       setInvoice(record)
-      const fileResponse = await fetch(`${API_BASE}/invoices/${id}/file?stream=true`, {
-        headers: { Authorization: `Bearer ${token || ''}` },
-      })
-      if (fileResponse.ok) setUploadedFileUrl(URL.createObjectURL(await fileResponse.blob()))
-      else setFileError('The uploaded invoice file could not be loaded.')
+      if (loadFile) {
+        const fileResponse = await fetch(`${API_BASE}/invoices/${id}/file?stream=true`, {
+          headers: { Authorization: `Bearer ${token || ''}` },
+        })
+        if (fileResponse.ok) setUploadedFileUrl(URL.createObjectURL(await fileResponse.blob()))
+        else setFileError('The uploaded invoice file could not be loaded.')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
-      setLoading(false)
+      if (loadFile) setLoading(false)
     }
   }
 
@@ -101,6 +148,10 @@ export function VendorInvoiceDetails() {
         return 'bg-yellow-100 text-yellow-800'
       case 'OCR_COMPLETED':
         return 'bg-purple-100 text-purple-800'
+      case 'REVIEW_REQUIRED':
+        return 'bg-amber-100 text-amber-900'
+      case 'RETURNED_TO_VENDOR':
+        return 'bg-red-100 text-red-800'
       case 'PROCUREMENT_REVIEW':
         return 'bg-orange-100 text-orange-800'
       case 'APPROVED':
@@ -216,7 +267,7 @@ export function VendorInvoiceDetails() {
             <div>
               <p className="text-gray-600 text-sm">Amount</p>
               <p className="text-2xl font-bold text-gray-800">
-                ${(invoice.totalAmount || 0).toFixed(2)}
+                {typeof invoice.totalAmount === 'number' ? `₹${invoice.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Not extracted'}
               </p>
             </div>
             <div>
@@ -235,6 +286,16 @@ export function VendorInvoiceDetails() {
             </div>
           </div>
         </div>
+
+        {(invoice.status === 'REVIEW_REQUIRED' || invoice.extractionStatus === 'FAILED' || invoice.extractionStatus === 'REVIEW_REQUIRED') && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-8" role="status">
+            <h2 className="text-lg font-bold text-amber-900">Extraction needs review</h2>
+            <p className="mt-2 text-amber-900">{invoice.extractionError || 'Some invoice values could not be confidently extracted. Review the original uploaded document below.'}</p>
+            <p className="mt-2 text-sm text-amber-800">Extraction state: {invoice.extractionStatus || 'not recorded'} · Risk evaluation: {invoice.riskEvaluationStatus || 'not evaluated'}</p>
+            {invoice.status === 'REVIEW_REQUIRED' && invoice.extractionStatus !== 'PROCESSING' && <button type="button" onClick={retryExtraction} disabled={reprocessing} className="mt-4 rounded-lg bg-amber-800 px-4 py-2 font-semibold text-white hover:bg-amber-900 disabled:opacity-50">{reprocessing ? 'Retrying extraction…' : 'Retry extraction from this bill'}</button>}
+            {reprocessMessage && <p role="status" className="mt-3 text-sm text-amber-900">{reprocessMessage}</p>}
+          </div>
+        )}
 
         {/* OCR Results */}
         {invoice.ocrResult && (
@@ -273,11 +334,11 @@ export function VendorInvoiceDetails() {
                   <p className="font-semibold text-gray-800">{invoice.ocrResult.poNumber}</p>
                 </div>
               )}
-              {invoice.ocrResult.totalAmount && (
+              {typeof invoice.ocrResult.totalAmount === 'number' && (
                 <div>
                   <p className="text-gray-600 text-sm">Total Amount (OCR)</p>
                   <p className="font-semibold text-gray-800">
-                    ${invoice.ocrResult.totalAmount.toFixed(2)}
+                    ₹{invoice.ocrResult.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
               )}
@@ -301,19 +362,39 @@ export function VendorInvoiceDetails() {
                       <tr key={idx} className="border-b">
                         <td className="py-2">{item.description || 'N/A'}</td>
                         <td className="text-right">{item.quantity || 'N/A'}</td>
-                        <td className="text-right">${(item.unitPrice || 0).toFixed(2)}</td>
-                        <td className="text-right">${(item.amount || 0).toFixed(2)}</td>
+                        <td className="text-right">{typeof item.unitPrice === 'number' ? `₹${item.unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>
+                        <td className="text-right">{typeof item.amount === 'number' ? `₹${item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+            {invoice.ocrResult.provider && <p className="mt-5 text-xs text-gray-500">Text provider: {invoice.ocrResult.provider}</p>}
+            {invoice.ocrResult.rawText && (
+              <details className="mt-4 rounded-lg border border-gray-200 p-4">
+                <summary className="cursor-pointer font-semibold text-gray-700">Show text read from the uploaded bill</summary>
+                <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-3 text-sm text-gray-800">{invoice.ocrResult.rawText}</pre>
+              </details>
+            )}
+            {invoice.ocrResult.fieldProvenance && (
+              <details className="mt-3 rounded-lg border border-gray-200 p-4">
+                <summary className="cursor-pointer font-semibold text-gray-700">Show extraction evidence</summary>
+                <dl className="mt-3 space-y-2 text-sm">
+                  {Object.entries(invoice.ocrResult.fieldProvenance).map(([fieldName, evidence]) => (
+                    <div key={fieldName} className="grid gap-1 sm:grid-cols-[10rem_1fr]">
+                      <dt className="font-semibold capitalize">{fieldName.replace(/([A-Z])/g, ' $1')}</dt>
+                      <dd className="text-gray-700">{evidence?.source || 'No matching text found on the document'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
           </div>
         )}
 
         {/* Risk Analysis */}
-        {(invoice.riskScore !== undefined || invoice.anomalies) && (
+        {invoice.riskEvaluationStatus === 'EVALUATED' && (invoice.riskScore !== undefined || invoice.anomalies) && (
           <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Risk Analysis</h2>
 

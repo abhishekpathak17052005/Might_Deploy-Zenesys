@@ -113,6 +113,17 @@ export class VendorService {
     return vendor;
   }
 
+  /** Remove a vendor's organization link. Historical invoices remain intact. */
+  async removeOrganizationFromVendor(vendorId: string, organizationId: string): Promise<IVendor> {
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) throw notFound("Vendor not found");
+    const existingIndex = vendor.organizationIds.findIndex((id) => id.toString() === organizationId);
+    if (existingIndex < 0) throw notFound("Organization connection not found");
+    vendor.organizationIds.splice(existingIndex, 1);
+    await vendor.save();
+    return vendor;
+  }
+
   /**
    * Get vendor profile by userId
    */

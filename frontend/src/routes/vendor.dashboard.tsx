@@ -24,6 +24,32 @@ export function VendorDashboard() {
   const navigate = useNavigate()
   const [vendor, setVendor] = useState<VendorProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [removingOrganizationId, setRemovingOrganizationId] = useState<string | null>(null)
+  const [organizationMessage, setOrganizationMessage] = useState<string | null>(null)
+
+  const removeOrganization = async (orgId: string, organizationName: string) => {
+    if (!window.confirm(`Remove your connection to ${organizationName}? Previously submitted invoices will remain available.`)) return
+    setRemovingOrganizationId(orgId)
+    setOrganizationMessage(null)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/vendor/organizations/${encodeURIComponent(orgId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token || ''}` },
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error?.message || 'Could not remove this organization connection.')
+      setVendor((current) => current ? {
+        ...current,
+        organizationIds: current.organizationIds.filter((item) => (typeof item === 'string' ? item : item._id) !== orgId),
+      } : current)
+      setOrganizationMessage(`Connection to ${organizationName} removed. Previously submitted invoices are unchanged.`)
+    } catch (err) {
+      setOrganizationMessage(err instanceof Error ? err.message : 'Could not remove this organization connection.')
+    } finally {
+      setRemovingOrganizationId(null)
+    }
+  }
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -139,15 +165,26 @@ export function VendorDashboard() {
                 title="Connected Organizations"
                 sub="Organizations you can invoice"
               />
+              {organizationMessage && <p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{organizationMessage}</p>}
               {vendor?.organizationIds.length ? (
                 <div className="flex flex-col gap-2">
                   {vendor.organizationIds.map((orgId, index) => {
                     const organizationLabel =
                       typeof orgId === 'string' ? orgId : orgId.name || orgId._id || 'Organization'
                     return (
-                    <div key={organizationLabel} className="rounded-xl bg-muted p-3">
-                      <p className="text-sm font-bold">Organization {index + 1}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{organizationLabel}</p>
+                    <div key={organizationLabel} className="flex items-center justify-between gap-3 rounded-xl bg-muted p-3">
+                      <div>
+                        <p className="text-sm font-bold">Organization {index + 1}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{organizationLabel}</p>
+                      </div>
+                      {typeof orgId !== 'string' && orgId._id && <button
+                        type="button"
+                        onClick={() => removeOrganization(orgId._id!, organizationLabel)}
+                        disabled={removingOrganizationId === orgId._id}
+                        className="shrink-0 rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {removingOrganizationId === orgId._id ? 'Removing…' : 'Remove connection'}
+                      </button>}
                     </div>
                     )
                   })}

@@ -87,17 +87,17 @@ const tests: TestCase[] = [
     }
   },
   {
-    name: "extraction: missing invoice number is rejected",
+    name: "extraction: missing invoice number remains null and reviewable",
     run: async () => {
       const raw = { ...validRawExtraction, invoice_number: { value: null, confidence: 0.2 } };
       const service = new ExtractionService(new StaticProvider(raw));
-      await assert.rejects(
-        service.extract({
+      const result = await service.extract({
           documentBuffer: Buffer.from("pdf"),
           mimeType: "application/pdf",
           filename: "invoice.pdf"
-        })
-      );
+        });
+      assert.equal(result.invoice.invoiceNumber, "");
+      assert.equal(result.confidence.invoiceNumber.status, "MISSING");
     }
   },
   {

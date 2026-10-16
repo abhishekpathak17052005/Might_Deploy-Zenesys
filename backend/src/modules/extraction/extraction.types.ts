@@ -8,10 +8,10 @@ export interface FieldExtraction<T> {
 
 export interface ExtractedInvoiceItem {
   description: string;
-  quantity: number;
-  unitPrice: number;
+  quantity: number | null;
+  unitPrice: number | null;
   taxRate?: number | null;
-  amount: number;
+  amount: number | null;
 }
 
 export interface StructuredInvoiceData {
@@ -73,6 +73,9 @@ export interface ExtractionResult {
   provider: string;
   model: string;
   extractedAt: Date;
+  sourceDocumentId?: string;
+  sourceDocumentVersion?: number;
+  sourceDocumentSha256?: string;
 }
 
 export interface InvoiceExtractionProvider {

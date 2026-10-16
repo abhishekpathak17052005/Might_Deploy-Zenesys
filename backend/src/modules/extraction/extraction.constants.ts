@@ -6,4 +6,4 @@ export const EXTRACTION_MODEL = process.env.GEMINI_EXTRACTION_MODEL ?? "gemini-3
 
 export const GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
-export const GROQ_DEFAULT_EXTRACTION_MODEL = process.env.GROQ_EXTRACTION_MODEL ?? "qwen/qwen3.6-27b";
+export const GROQ_DEFAULT_EXTRACTION_MODEL = process.env.GROQ_EXTRACTION_MODEL ?? "qwen/qwen3.8-27b";

@@ -4,7 +4,7 @@ import { AuditLog } from "../models/AuditLog";
 import { badRequest, notFound, forbidden } from "../utils/errors";
 import { Types } from "mongoose";
 import { createHash } from "crypto";
-import { AnomalyEngine } from "../modules/anomaly/anomaly.engine";
+import { extractionMatchesSourceDocument } from "../modules/extraction/documentProvenance";
 
 export interface CreateInvoiceInput {
   invoiceNumber: string;
@@ -359,7 +359,8 @@ export class InvoiceService {
     organizationId: string,
     attachmentUrl?: string,
     attachmentData?: Buffer,
-    attachmentMimeType?: string
+    attachmentMimeType?: string,
+    idempotencyKey?: string
   ): Promise<IInvoice> {
     const vendor = await Vendor.findOne({ userId });
     if (!vendor) {
@@ -373,6 +374,16 @@ export class InvoiceService {
       throw forbidden("Vendor does not have access to this organization");
     }
 
+    const sha256 = attachmentData ? createHash("sha256").update(attachmentData).digest("hex") : undefined;
+    if (idempotencyKey) {
+      if (!/^[A-Za-z0-9._:-]{8,120}$/.test(idempotencyKey)) throw badRequest("Idempotency-Key must be 8 to 120 safe characters");
+      const existing = await Invoice.findOne({ organizationId: new Types.ObjectId(organizationId), uploadedBy: new Types.ObjectId(userId), idempotencyKey });
+      if (existing) {
+        if (existing.attachmentSha256 !== sha256) throw badRequest("Idempotency-Key was already used for a different document");
+        return existing;
+      }
+    }
+
     const invoice = new Invoice({
       organizationId: new Types.ObjectId(organizationId),
       vendorId: vendor._id,
@@ -382,96 +393,128 @@ export class InvoiceService {
       attachmentUrl,
       attachmentData,
       attachmentMimeType,
-      attachmentSha256: attachmentData ? createHash("sha256").update(attachmentData).digest("hex") : undefined,
+      attachmentSha256: sha256,
+      sourceDocumentId: "pending",
+      sourceDocumentVersion: 1,
+      idempotencyKey,
       extractionStatus: "PENDING",
       riskEvaluationStatus: "NOT_EVALUATED",
     });
 
-    await invoice.save();
+    invoice.sourceDocumentId = invoice._id.toString();
+    try {
+      await invoice.save();
+    } catch (error: any) {
+      if (error?.code === 11000 && idempotencyKey) {
+        const existing = await Invoice.findOne({ organizationId: new Types.ObjectId(organizationId), uploadedBy: new Types.ObjectId(userId), idempotencyKey });
+        if (existing && existing.attachmentSha256 === sha256) return existing;
+      }
+      throw error;
+    }
+    await this._audit({ organizationId, actorId: userId, action: "INVOICE_DOCUMENT_UPLOADED", resourceId: invoice._id.toString(), newState: { sourceDocumentId: invoice.sourceDocumentId, sourceDocumentVersion: 1, attachmentSha256: sha256, fileSizeBytes: attachmentData?.length, extractionStatus: "PENDING" } });
     return invoice;
+  }
+
+  async claimVendorOCR(invoiceId: string, organizationId: string, sha256: string): Promise<boolean> {
+    const claimed = await Invoice.findOneAndUpdate(
+      { _id: new Types.ObjectId(invoiceId), organizationId: new Types.ObjectId(organizationId), attachmentSha256: sha256, extractionStatus: "PENDING" },
+      { $set: { extractionStatus: "PROCESSING" } }, { new: true },
+    );
+    return Boolean(claimed);
+  }
+
+  async claimVendorOCRRetry(invoiceId: string, vendorUserId: string): Promise<IInvoice> {
+    const candidate = await Invoice.findOne({
+      _id: new Types.ObjectId(invoiceId),
+      uploadedBy: new Types.ObjectId(vendorUserId),
+      status: "REVIEW_REQUIRED",
+      extractionStatus: { $in: ["FAILED", "REVIEW_REQUIRED"] },
+    }).select("+attachmentData");
+    if (!candidate) throw notFound("Review-required invoice not found or cannot be reprocessed");
+    if (!candidate.attachmentData || !candidate.attachmentSha256 || !candidate.sourceDocumentId || !candidate.sourceDocumentVersion) {
+      throw badRequest("The original uploaded document is unavailable for reprocessing.");
+    }
+    const actualHash = createHash("sha256").update(candidate.attachmentData).digest("hex");
+    if (actualHash !== candidate.attachmentSha256) throw badRequest("The stored invoice document hash does not match; reprocessing was blocked.");
+
+    const claimed = await Invoice.findOneAndUpdate({
+      _id: candidate._id,
+      uploadedBy: new Types.ObjectId(vendorUserId),
+      status: "REVIEW_REQUIRED",
+      extractionStatus: candidate.extractionStatus,
+      attachmentSha256: candidate.attachmentSha256,
+    }, { $set: { extractionStatus: "PROCESSING" } }, { new: true }).select("+attachmentData");
+    if (!claimed) throw badRequest("Invoice extraction is already processing or the invoice state has changed.");
+    await this._audit({
+      organizationId: claimed.organizationId.toString(),
+      actorId: vendorUserId,
+      action: "INVOICE_OCR_REPROCESS_STARTED",
+      resourceId: invoiceId,
+      newState: { sourceDocumentId: claimed.sourceDocumentId, sourceDocumentVersion: claimed.sourceDocumentVersion, attachmentSha256: claimed.attachmentSha256 },
+    });
+    return claimed;
   }
 
   async saveVendorOCRResult(invoiceId: string, extracted: import("../modules/extraction").ExtractionResult): Promise<IInvoice> {
     const invoice = await Invoice.findById(invoiceId).populate("vendorId", "name gstin status isApproved");
     if (!invoice) throw notFound("Invoice not found after upload");
+    if (!extractionMatchesSourceDocument(extracted, { documentId: invoice.sourceDocumentId, version: invoice.sourceDocumentVersion, sha256: invoice.attachmentSha256 })) {
+      throw badRequest("OCR result document ID, version, or SHA-256 does not match the uploaded invoice document");
+    }
     const data = extracted.invoice;
-    const vendor = invoice.vendorId as any;
-    const vendorMatchStatus = compareVendorIdentity(data.vendorName, data.gstin, vendor?.name, vendor?.gstin);
-    const poMatchStatus = data.poNumber ? "UNVERIFIED" : "NOT_REQUIRED";
+    const vendorMatchStatus = "UNVERIFIED" as const;
     const criticalFields = [extracted.confidence.invoiceNumber, extracted.confidence.vendorName, extracted.confidence.total];
     const lowConfidence = criticalFields.some((field) => field.status !== "EXTRACTED" || (field.confidence ?? 0) < 0.75);
     const extractionStatus = extracted.validation.status === "VALID" && data.total > 0 && data.items.length > 0 && !lowConfidence
       ? "SUCCEEDED" as const : "REVIEW_REQUIRED" as const;
 
-    invoice.invoiceNumber = data.invoiceNumber || undefined;
+    invoice.invoiceNumber = extracted.confidence.invoiceNumber.status === "MISSING" ? undefined : data.invoiceNumber || undefined;
     invoice.invoiceDate = Number.isNaN(data.invoiceDate.getTime()) ? undefined : data.invoiceDate;
     // Keep vendorName bound to the authenticated Vendor document, never OCR text.
-    invoice.gstin = data.gstin || undefined;
-    invoice.poNumber = data.poNumber || undefined;
-    invoice.totalAmount = data.total > 0 ? data.total : undefined;
-    invoice.subtotal = data.subtotal > 0 ? data.subtotal : undefined;
-    invoice.taxAmount = data.tax > 0 ? data.tax : undefined;
+    invoice.gstin = extracted.confidence.gstin.status === "MISSING" ? undefined : data.gstin || undefined;
+    invoice.poNumber = extracted.confidence.poNumber.status === "MISSING" ? undefined : data.poNumber || undefined;
+    invoice.totalAmount = extracted.confidence.total.status === "MISSING" ? undefined : data.total;
+    invoice.subtotal = extracted.confidence.subtotal.status === "MISSING" ? undefined : data.subtotal;
+    invoice.taxAmount = extracted.confidence.tax.status === "MISSING" ? undefined : data.tax;
     invoice.description = data.items.map((item) => item.description).filter(Boolean).join(", ") || undefined;
     invoice.lineItems = data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })) as typeof invoice.lineItems;
     invoice.ocrResult = {
-      invoiceNumber: data.invoiceNumber,
+      invoiceNumber: extracted.confidence.invoiceNumber.status === "MISSING" ? undefined : data.invoiceNumber || undefined,
       invoiceDate: Number.isNaN(data.invoiceDate.getTime()) ? undefined : data.invoiceDate,
-      vendorName: data.vendorName,
-      gstin: data.gstin || undefined,
-      poNumber: data.poNumber || undefined,
-      totalAmount: data.total,
-      subtotal: data.subtotal,
-      taxAmount: data.tax,
+      vendorName: extracted.confidence.vendorName.status === "MISSING" ? undefined : data.vendorName || undefined,
+      gstin: extracted.confidence.gstin.status === "MISSING" ? undefined : data.gstin || undefined,
+      poNumber: extracted.confidence.poNumber.status === "MISSING" ? undefined : data.poNumber || undefined,
+      totalAmount: extracted.confidence.total.status === "MISSING" ? undefined : data.total,
+      subtotal: extracted.confidence.subtotal.status === "MISSING" ? undefined : data.subtotal,
+      taxAmount: extracted.confidence.tax.status === "MISSING" ? undefined : data.tax,
       lineItems: data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })),
       extractedAt: extracted.extractedAt,
       rawConfidence: extracted.confidence,
+      rawText: typeof (extracted.raw as any)?.rawText === "string" ? (extracted.raw as any).rawText : undefined,
+      fieldProvenance: (extracted.raw as any)?.provenance,
+      provider: extracted.provider,
+      sourceDocumentId: invoice.sourceDocumentId,
+      sourceDocumentVersion: extracted.sourceDocumentVersion,
+      sourceDocumentSha256: extracted.sourceDocumentSha256,
     };
     invoice.extractionStatus = extractionStatus;
     invoice.extractionError = extractionStatus === "SUCCEEDED" ? undefined : [
+      typeof (extracted.raw as any)?.structuringError === "string" ? (extracted.raw as any).structuringError : "",
       lowConfidence ? "One or more critical OCR fields have low or missing confidence." : "",
       ...extracted.validation.findings.map((finding) => finding.message),
       !(data.total > 0) ? "A valid invoice total could not be extracted." : "",
       !data.items.length ? "No invoice line items were extracted." : "",
     ].filter(Boolean).join(" ") || "OCR output needs procurement review.";
     invoice.vendorMatchStatus = vendorMatchStatus;
-    invoice.poMatchStatus = poMatchStatus;
-    invoice.status = extractionStatus === "SUCCEEDED" && vendorMatchStatus === "MATCH" && poMatchStatus === "NOT_REQUIRED"
-      ? "OCR_COMPLETED" : "REVIEW_REQUIRED";
+    invoice.poMatchStatus = data.poNumber ? "UNVERIFIED" : "NOT_REQUIRED";
+    invoice.status = "REVIEW_REQUIRED";
     invoice.riskEvaluationStatus = "NOT_EVALUATED";
+    invoice.riskScore = undefined;
+    invoice.riskLevel = undefined;
+    invoice.anomalies = undefined;
     await invoice.save();
-
-    // Risk is calculated from fields reloaded from persistence and the authenticated vendor master record.
-    const persisted = await Invoice.findById(invoiceId).populate("vendorId", "name gstin status isApproved");
-    if (!persisted) throw notFound("Invoice not found after OCR persistence");
-    const persistedVendor = persisted.vendorId as any;
-    const riskResult = await new AnomalyEngine().evaluate({
-      invoice: {
-        id: persisted._id.toString(), invoiceNumber: persisted.invoiceNumber,
-        invoiceType: persisted.poNumber ? "PO_BASED" : "NON_PO",
-        vendorId: (persistedVendor?._id || persisted.vendorId).toString(),
-        vendorName: persisted.ocrResult?.vendorName || persisted.vendorName,
-        poNumber: persisted.poNumber, totalAmount: persisted.totalAmount,
-        invoiceDate: persisted.invoiceDate, gstin: persisted.gstin,
-        lineItems: persisted.lineItems.map((item) => ({ description: item.description, quantity: item.quantity, amount: item.amount })),
-      },
-      vendor: persistedVendor ? {
-        id: persistedVendor._id.toString(), name: persistedVendor.name, gstin: persistedVendor.gstin,
-        isActive: persistedVendor.status === "ACTIVE", isApproved: persistedVendor.isApproved,
-      } : undefined,
-      purchaseOrder: undefined, historicalInvoices: [], recentInvoices: [],
-    });
-    const extraSignals = [
-      ...(vendorMatchStatus !== "MATCH" ? [{ type: `VENDOR_${vendorMatchStatus}`, severity: vendorMatchStatus === "MISMATCH" ? "HIGH" : "MEDIUM", message: `OCR vendor identity is ${vendorMatchStatus.toLowerCase()} against the authenticated vendor record.` }] : []),
-      ...(extractionStatus !== "SUCCEEDED" ? [{ type: "EXTRACTION_REVIEW_REQUIRED", severity: "HIGH", message: invoice.extractionError || "OCR evidence requires review." }] : []),
-    ];
-    const score = Math.min(100, riskResult.risk.score + extraSignals.reduce((sum, signal) => sum + (signal.severity === "HIGH" ? 30 : 15), 0));
-    const riskLevel = score > 75 ? "CRITICAL" : score > 50 ? "HIGH" : score > 20 ? "MEDIUM" : "LOW";
-    const updated = await Invoice.findByIdAndUpdate(invoiceId, { $set: {
-      riskScore: score, riskLevel, riskEvaluationStatus: "EVALUATED", riskEvaluatedAt: new Date(),
-      anomalies: [...riskResult.signals.map((signal) => ({ type: signal.type, severity: signal.severity, message: signal.message })), ...extraSignals],
-    } }, { new: true }).populate("vendorId", "name gstin");
-    if (!updated) throw notFound("Invoice not found after risk evaluation");
-    return updated;
+    await this._audit({ organizationId: invoice.organizationId.toString(), actorId: invoice.uploadedBy.toString(), action: "INVOICE_OCR_COMPLETED", resourceId: invoiceId, newState: { provider: extracted.provider, extractionStatus, sourceDocumentId: invoice.sourceDocumentId, sourceDocumentVersion: invoice.sourceDocumentVersion, attachmentSha256: invoice.attachmentSha256, validationStatus: extracted.validation.status, riskEvaluationStatus: "NOT_EVALUATED" } });
+    return invoice;
   }
 
   async markVendorExtractionFailed(invoiceId: string, message: string): Promise<IInvoice> {
@@ -480,6 +523,7 @@ export class InvoiceService {
       $unset: { riskScore: 1, riskLevel: 1, anomalies: 1 },
     }, { new: true });
     if (!updated) throw notFound("Invoice not found after failed extraction");
+    await this._audit({ organizationId: updated.organizationId.toString(), actorId: updated.uploadedBy.toString(), action: "INVOICE_OCR_FAILED", resourceId: invoiceId, newState: { extractionStatus: "FAILED", sourceDocumentId: updated.sourceDocumentId, sourceDocumentVersion: updated.sourceDocumentVersion, attachmentSha256: updated.attachmentSha256, error: message.slice(0, 400) } });
     return updated;
   }
 
@@ -487,7 +531,12 @@ export class InvoiceService {
     const existing = await Invoice.findOne({ _id: new Types.ObjectId(invoiceId), ...(organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {}) }).select("+attachmentData");
     if (!existing) throw notFound("Invoice not found or is outside your organization");
     const hasUploadedSource = Boolean(existing.attachmentData || existing.attachmentSha256 || existing.attachmentUrl);
-    const requiresAcknowledgement = hasUploadedSource && (existing.extractionStatus !== "SUCCEEDED" || existing.vendorMatchStatus !== "MATCH" || !["MATCH", "NOT_REQUIRED"].includes(existing.poMatchStatus || ""));
+    const documentMismatch = Boolean(existing.ocrResult) && (
+      existing.ocrResult?.sourceDocumentId !== existing.sourceDocumentId ||
+      existing.ocrResult?.sourceDocumentVersion !== existing.sourceDocumentVersion ||
+      existing.ocrResult?.sourceDocumentSha256 !== existing.attachmentSha256
+    );
+    const requiresAcknowledgement = hasUploadedSource && (documentMismatch || existing.extractionStatus !== "SUCCEEDED" || existing.vendorMatchStatus !== "MATCH" || !["MATCH", "NOT_REQUIRED"].includes(existing.poMatchStatus || ""));
     if (requiresAcknowledgement && !reviewConfirmed) {
       throw badRequest("This invoice has unverified OCR, vendor, or PO evidence. Review the uploaded bill and explicitly acknowledge the exception before forwarding.");
     }
@@ -576,6 +625,32 @@ export class InvoiceService {
     ]);
 
     return { invoices, total };
+  }
+
+  async withdrawVendorInvoice(invoiceId: string, vendorUserId: string): Promise<IInvoice> {
+    const invoice = await Invoice.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(invoiceId),
+        uploadedBy: new Types.ObjectId(vendorUserId),
+        status: { $in: ["SUBMITTED", "REVIEW_REQUIRED", "OCR_PROCESSING", "OCR_COMPLETED", "PROCUREMENT_REVIEW"] },
+      },
+      { $set: { status: "WITHDRAWN", returnReason: "Withdrawn by vendor" } },
+      { new: true },
+    );
+    if (invoice) {
+      await this._audit({
+        organizationId: invoice.organizationId.toString(),
+        actorId: vendorUserId,
+        action: "VENDOR_INVOICE_WITHDRAWN",
+        resourceId: invoiceId,
+        newState: { status: "WITHDRAWN" },
+      });
+      return invoice;
+    }
+
+    const ownedInvoice = await Invoice.exists({ _id: new Types.ObjectId(invoiceId), uploadedBy: new Types.ObjectId(vendorUserId) });
+    if (!ownedInvoice) throw notFound("Invoice not found");
+    throw badRequest("This invoice can no longer be withdrawn because review or a final decision has progressed.");
   }
 
   async approveInvoice(invoiceId: string, approverId: string): Promise<IInvoice | null> {

@@ -13,11 +13,6 @@ interface Organization {
   name: string
 }
 
-const DEMO_ORGANIZATION: Organization = {
-  _id: 'demo-acme-corp',
-  name: 'Acme Corp (Demo)',
-}
-
 export function VendorInvoiceNew() {
   const navigate = useNavigate()
   const [organizations, setOrganizations] = useState<Organization[]>([])
@@ -26,6 +21,9 @@ export function VendorInvoiceNew() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [submissionMessage, setSubmissionMessage] = useState<string | null>(null)
+  const [submittedInvoiceId, setSubmittedInvoiceId] = useState<string | null>(null)
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
     fetchVendorOrganizations()
@@ -49,16 +47,17 @@ export function VendorInvoiceNew() {
           _id: typeof org === 'object' ? org._id : org,
           name: typeof org === 'object' && org.name ? org.name : `Organization ${typeof org === 'string' ? org.substring(0, 8) : ''}...`,
         }))
-      setOrganizations(mappedOrganizations.length ? mappedOrganizations : [DEMO_ORGANIZATION])
+      setOrganizations(mappedOrganizations)
     } catch (err) {
-      setOrganizations([DEMO_ORGANIZATION])
-      setError(null)
+      setOrganizations([])
+      setError(err instanceof Error ? err.message : 'Could not load your linked organizations')
     }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       setAttachment(e.target.files[0])
+      setIdempotencyKey(crypto.randomUUID())
       setError(null)
     }
   }
@@ -73,18 +72,17 @@ export function VendorInvoiceNew() {
       setError('Please select an invoice file')
       return
     }
+    if (attachment.size === 0 || attachment.size > 1_000_000) {
+      setError('Choose a non-empty invoice file no larger than 1 MB for OCR.space Free.')
+      return
+    }
 
     setLoading(true)
     setError(null)
 
     try {
       if (!localStorage.getItem('token')) {
-        setSuccess(true)
-        setLoading(false)
-        setTimeout(() => {
-          navigate({ to: '/vendor/invoices' })
-        }, 2000)
-        return
+        throw new Error('Your session has expired. Sign in before submitting an invoice.')
       }
 
       const formData = new FormData()
@@ -96,6 +94,7 @@ export function VendorInvoiceNew() {
         body: formData,
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Idempotency-Key': idempotencyKey,
         },
       })
 
@@ -104,10 +103,19 @@ export function VendorInvoiceNew() {
         throw new Error(errJson.error?.message || errJson.message || 'Invoice submission failed')
       }
 
+      const result = await response.json()
+      const invoice = result.data?.invoice
+      if (!invoice?._id) throw new Error('The server accepted the upload but did not return its invoice record.')
+      setSubmittedInvoiceId(String(invoice._id))
+      const status = invoice.extractionStatus
+      if (status === 'FAILED' || status === 'REVIEW_REQUIRED' || invoice.status === 'REVIEW_REQUIRED') {
+        setSubmissionMessage(invoice.extractionError || 'OCR did not confirm all invoice fields. The original file is saved and the invoice requires review.')
+      } else if (status === 'SUCCEEDED') {
+        setSubmissionMessage('OCR extracted the invoice. Vendor and purchase order verification may still be required.')
+      } else {
+        setSubmissionMessage('The upload is saved. OCR processing has not yet completed; check the invoice status.')
+      }
       setSuccess(true)
-      setTimeout(() => {
-        navigate({ to: '/vendor/invoices' })
-      }, 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -153,9 +161,10 @@ export function VendorInvoiceNew() {
 
         {/* Success Message */}
         {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
-            <p className="text-green-800 font-semibold">Invoice Submitted Successfully!</p>
-            <p className="text-green-700 mt-2">Redirecting to invoice list...</p>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-8">
+            <p className="text-amber-900 font-semibold">Invoice upload saved — check extraction status</p>
+            <p className="text-amber-800 mt-2">{submissionMessage}</p>
+            {submittedInvoiceId && <button type="button" onClick={() => navigate({ to: '/vendor/invoices/$id', params: { id: submittedInvoiceId } })} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">View this invoice</button>}
           </div>
         )}
 

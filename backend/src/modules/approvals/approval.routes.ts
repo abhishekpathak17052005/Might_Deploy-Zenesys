@@ -8,26 +8,6 @@ import type { ApprovalResponse } from "./approval.types";
 
 export const approvalRouter = express.Router();
 
-approvalRouter.get("/stats", verifyJWTToken, requireRole("FINANCE_MANAGER", "ORGANIZATION_ADMIN"), async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const match: Record<string, unknown> = {};
-    if (req.user?.organizationId) match.organizationId = req.user.organizationId;
-    const rows = await Invoice.aggregate([
-      { $match: match },
-      { $group: { _id: "$status", count: { $sum: 1 }, value: { $sum: "$totalAmount" } } }
-    ]);
-    const totals = rows.reduce((out, row) => {
-      if (row._id === "APPROVED") out.approved = row.count;
-      else if (row._id === "REJECTED") out.rejected = row.count;
-      else { out.pending += row.count; out.totalValue += row.value; }
-      return out;
-    }, { pending: 0, approved: 0, rejected: 0, totalValue: 0 });
-    return sendSuccess(res, totals);
-  } catch {
-    return sendError(res, "INTERNAL_ERROR", "Unable to load finance statistics", 500);
-  }
-});
-
 // GET /finance/review - List invoices awaiting Finance Manager review
 approvalRouter.get(
   "/review",
@@ -37,9 +17,11 @@ approvalRouter.get(
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const organizationId = req.user?.organizationId;
+      if (!organizationId) return sendError(res, "FORBIDDEN", "Finance user is not associated with an organization", 403);
       const invoices = await approvalService.listPendingReview(limit, organizationId);
+      const awaitingProcurement = await approvalService.listAwaitingProcurement(limit, organizationId);
 
-      return sendSuccess(res, { count: invoices.length, invoices });
+      return sendSuccess(res, { count: invoices.length, invoices, awaitingProcurement });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("approval.list_pending.failed", { error: message });
@@ -47,7 +29,6 @@ approvalRouter.get(
     }
   }
 );
-
 // GET /finance/invoices/:documentId - Get full review packet for an invoice
 approvalRouter.get(
   "/invoices/:documentId",
@@ -56,17 +37,13 @@ approvalRouter.get(
   async (req: Request, res: Response): Promise<Response> => {
     try {
       const { documentId } = req.params;
+      if (!req.user?.organizationId) return sendError(res, "FORBIDDEN", "Finance user is not associated with an organization", 403);
 
-      const invoice = await Invoice.findById(documentId)
+      const invoice = await Invoice.findOne({ _id: documentId, organizationId: req.user?.organizationId })
         .populate("vendorId", "name gstin")
         .populate("uploadedBy", "name email");
 
       if (!invoice) return sendError(res, "NOT_FOUND", "Invoice not found", 404);
-
-      // Enforce org isolation
-      if (req.user?.organizationId && invoice.organizationId.toString() !== req.user.organizationId) {
-        return sendError(res, "FORBIDDEN", "You do not have access to this invoice", 403);
-      }
 
       const approval = await approvalService.getApprovalDecision(documentId);
 
@@ -85,6 +62,22 @@ approvalRouter.get(
           submittedAt: invoice.createdAt,
         }
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return sendError(res, "INTERNAL_ERROR", message, 500);
+    }
+  }
+);
+
+approvalRouter.get(
+  "/stats",
+  verifyJWTToken,
+  requireRole("FINANCE_MANAGER", "ORGANIZATION_ADMIN"),
+  async (req: Request, res: Response): Promise<Response> => {
+    try {
+      if (!req.user?.organizationId) return sendError(res, "FORBIDDEN", "Finance user is not associated with an organization", 403);
+      const stats = await approvalService.getApprovalStats(req.user.organizationId);
+      return sendSuccess(res, stats);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return sendError(res, "INTERNAL_ERROR", message, 500);
@@ -186,22 +179,6 @@ approvalRouter.post(
         return sendError(res, "NOT_FOUND", message, 404);
       }
       return sendError(res, "INTERNAL_ERROR", message, 400);
-    }
-  }
-);
-
-// GET /finance/stats
-approvalRouter.get(
-  "/stats",
-  verifyJWTToken,
-  requireRole("FINANCE_MANAGER", "ORGANIZATION_ADMIN"),
-  async (req: Request, res: Response): Promise<Response> => {
-    try {
-      const stats = await approvalService.getApprovalStats(req.user?.organizationId);
-      return sendSuccess(res, stats);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return sendError(res, "INTERNAL_ERROR", message, 500);
     }
   }
 );

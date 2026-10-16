@@ -23,7 +23,7 @@ const envSchema = z.object({
 
   // Groq
   GROQ_API_KEY: z.string().optional(),
-  GROQ_EXTRACTION_MODEL: z.string().optional().default("llama-3.2-11b-vision-preview"),
+  GROQ_EXTRACTION_MODEL: z.string().optional().default("qwen/qwen3.8-27b"),
 
   // OCR
   EXTRACTION_PROVIDER: z.enum(["gemini", "ollama", "groq"]).optional().default("gemini"),

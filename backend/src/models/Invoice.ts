@@ -8,6 +8,7 @@ export type InvoiceStatus =
   | "PROCUREMENT_REVIEW" 
   | "FINANCE_REVIEW"
   | "RETURNED_TO_VENDOR"
+  | "WITHDRAWN"
   | "APPROVED" 
   | "REJECTED" 
   | "ON_HOLD";
@@ -23,12 +24,18 @@ export interface OCRResult {
   taxAmount?: number;
   lineItems?: Array<{
     description?: string;
-    quantity?: number;
-    unitPrice?: number;
-    amount?: number;
+    quantity?: number | null;
+    unitPrice?: number | null;
+    amount?: number | null;
   }>;
   confidence?: Record<string, number>;
   rawConfidence?: unknown;
+  rawText?: string;
+  fieldProvenance?: Record<string, unknown>;
+  provider?: string;
+  sourceDocumentId?: string;
+  sourceDocumentVersion?: number;
+  sourceDocumentSha256?: string;
   extractedAt?: Date;
 }
 
@@ -77,8 +84,11 @@ export interface IInvoice extends Document {
   attachmentData?: Buffer;
   attachmentMimeType?: string;
   attachmentSha256?: string;
+  sourceDocumentId?: string;
+  sourceDocumentVersion?: number;
+  idempotencyKey?: string;
   legacyExtractionDiscarded?: unknown;
-  extractionStatus?: "PENDING" | "SUCCEEDED" | "REVIEW_REQUIRED" | "FAILED";
+  extractionStatus?: "PENDING" | "PROCESSING" | "SUCCEEDED" | "REVIEW_REQUIRED" | "FAILED";
   extractionError?: string;
   vendorMatchStatus?: "MATCH" | "MISMATCH" | "UNVERIFIED";
   poMatchStatus?: "MATCH" | "MISMATCH" | "UNVERIFIED" | "NOT_REQUIRED";
@@ -86,9 +96,9 @@ export interface IInvoice extends Document {
   riskEvaluatedAt?: Date;
   lineItems: Array<{
     description: string;
-    quantity: number;
-    unitPrice: number;
-    amount: number;
+    quantity?: number | null;
+    unitPrice?: number | null;
+    amount?: number | null;
   }>;
   // OCR & Extraction Fields
   ocrResult?: OCRResult;
@@ -162,6 +172,7 @@ const invoiceSchema = new Schema<IInvoice>(
         "PROCUREMENT_REVIEW",
         "FINANCE_REVIEW",
         "RETURNED_TO_VENDOR",
+        "WITHDRAWN",
         "APPROVED",
         "REJECTED",
         "ON_HOLD",
@@ -203,8 +214,11 @@ const invoiceSchema = new Schema<IInvoice>(
     },
     attachmentMimeType: String,
     attachmentSha256: String,
+    sourceDocumentId: String,
+    sourceDocumentVersion: Number,
+    idempotencyKey: String,
     legacyExtractionDiscarded: { type: Schema.Types.Mixed, select: false },
-    extractionStatus: { type: String, enum: ["PENDING", "SUCCEEDED", "REVIEW_REQUIRED", "FAILED"] },
+    extractionStatus: { type: String, enum: ["PENDING", "PROCESSING", "SUCCEEDED", "REVIEW_REQUIRED", "FAILED"] },
     extractionError: String,
     vendorMatchStatus: { type: String, enum: ["MATCH", "MISMATCH", "UNVERIFIED"] },
     poMatchStatus: { type: String, enum: ["MATCH", "MISMATCH", "UNVERIFIED", "NOT_REQUIRED"] },
@@ -249,6 +263,12 @@ const invoiceSchema = new Schema<IInvoice>(
       confidence: Schema.Types.Mixed,
       extractedAt: Date,
       rawConfidence: Schema.Types.Mixed,
+      rawText: String,
+      fieldProvenance: Schema.Types.Mixed,
+      provider: String,
+      sourceDocumentId: String,
+      sourceDocumentVersion: Number,
+      sourceDocumentSha256: String,
     },
     // Categorization
     category: {
@@ -295,5 +315,6 @@ invoiceSchema.index({ vendorId: 1, status: 1 });
 invoiceSchema.index({ uploadedBy: 1, organizationId: 1 });
 invoiceSchema.index({ status: 1, createdAt: -1 });
 invoiceSchema.index({ organizationId: 1, riskLevel: 1 });
+invoiceSchema.index({ organizationId: 1, uploadedBy: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $type: "string" } } });
 
 export const Invoice = mongoose.model<IInvoice>("Invoice", invoiceSchema);

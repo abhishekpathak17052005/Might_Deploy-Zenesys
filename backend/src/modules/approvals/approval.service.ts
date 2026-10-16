@@ -205,12 +205,21 @@ class ApprovalService {
   /**
    * List invoices pending Finance Manager review (org-scoped via invoice lookup).
    */
-  async listPendingReview(limit: number = 20, organizationId?: string): Promise<IInvoice[]> {
+  async listPendingReview(limit: number = 20, organizationId: string): Promise<IInvoice[]> {
     const reviewStatuses = ["FINANCE_REVIEW"];
-    const query: Record<string, unknown> = { status: { $in: reviewStatuses } };
-    if (organizationId) query.organizationId = new Types.ObjectId(organizationId);
+    const query: Record<string, unknown> = { organizationId: new Types.ObjectId(organizationId), status: { $in: reviewStatuses } };
 
     return await Invoice.find(query)
+      .populate("vendorId", "name gstin")
+      .populate("uploadedBy", "name email")
+      .sort({ createdAt: -1 })
+      .limit(limit);
+  }
+
+  /** List same-organization invoices visible to Finance but not yet forwarded by Procurement. */
+  async listAwaitingProcurement(limit: number = 20, organizationId: string): Promise<IInvoice[]> {
+    const statuses = ["SUBMITTED", "REVIEW_REQUIRED", "OCR_PROCESSING", "OCR_COMPLETED", "PROCUREMENT_REVIEW", "RETURNED_TO_VENDOR", "ON_HOLD"];
+    return Invoice.find({ organizationId: new Types.ObjectId(organizationId), status: { $in: statuses } })
       .populate("vendorId", "name gstin")
       .populate("uploadedBy", "name email")
       .sort({ createdAt: -1 })
@@ -220,13 +229,13 @@ class ApprovalService {
   /**
    * Get approval stats per organization.
    */
-  async getApprovalStats(organizationId?: string): Promise<{
+  async getApprovalStats(organizationId: string): Promise<{
     pending: number;
     approved: number;
     rejected: number;
     totalValue: number;
   }> {
-    const orgFilter = organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {};
+    const orgFilter = { organizationId: new Types.ObjectId(organizationId) };
     const reviewStatuses = ["FINANCE_REVIEW"];
 
     const [pending, approved, rejected, valueAgg] = await Promise.all([

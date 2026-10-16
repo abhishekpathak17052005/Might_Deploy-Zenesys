@@ -261,6 +261,21 @@ async function runReleaseCandidateValidation() {
     assert.equal(queueFound, true, "Invoice must appear in the tenant's Finance Review Queue");
     log("Invoice retrieved from pending Finance Review Queue");
 
+    const upstreamInvoice = await Invoice.create({
+      organizationId: orgAlphaId,
+      invoiceNumber: `UPSTREAM-${testId}`,
+      vendorId: vendor._id,
+      vendorName: vendor.name,
+      totalAmount: 100000,
+      status: "REVIEW_REQUIRED",
+      uploadedBy: procurementUser._id,
+      lineItems: [{ description: "Catering services", quantity: null, unitPrice: null, amount: null }],
+    });
+    const upstreamList = await approvalService.listAwaitingProcurement(20, orgAlphaId.toString());
+    assert.equal(upstreamList.some((item) => item.id === upstreamInvoice._id.toString()), true, "Finance should be able to see same-organization invoices awaiting Procurement");
+    assert.equal(pendingList.some((item) => item.id === upstreamInvoice._id.toString()), false, "An upstream invoice must not enter the finance decision queue before Procurement forwards it");
+    log("Finance visibility includes upstream bills while approval queue remains gated on Procurement handoff");
+
     // Verify self-approval rejection (Separation of duties)
     let selfApprovalBlocked = false;
     try {

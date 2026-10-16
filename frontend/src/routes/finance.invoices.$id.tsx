@@ -43,15 +43,19 @@ function FinanceReview() {
   };
 
   if (!invoice) return <AppShell role="Finance" title="Invoice review"><Card><p className="text-sm text-muted-foreground">{loadError || "Loading invoice..."}</p></Card></AppShell>;
+  const canDecide = invoice.status === "FINANCE_REVIEW";
+  const awaitingProcurement = ["SUBMITTED", "REVIEW_REQUIRED", "OCR_PROCESSING", "OCR_COMPLETED", "PROCUREMENT_REVIEW", "RETURNED_TO_VENDOR", "ON_HOLD"].includes(invoice.status);
   return <AppShell role="Finance" title={`Review ${invoice.invoiceNumber}`} subtitle={`${invoice.vendorName} · ${invoice.poNumber}`} actions={<Link to="/finance/review" className="rounded-full bg-card px-4 py-2.5 text-xs font-semibold shadow-card">Back to queue</Link>}>
     <div className="flex flex-col gap-5">
       <InvoiceHeader invoice={invoice} />
       <div className="grid gap-5 lg:grid-cols-2"><InvoiceInformation invoice={invoice} /><Verification invoice={invoice} /><CategoryCard invoice={invoice} /><RiskAnalysis invoice={invoice} /><Evidence invoice={invoice} /><RelatedTransactions invoice={invoice} /></div>
-      <Card><CardHead title="Finance decision" sub="Record the approval decision and audit event" />
+      {canDecide ? <Card><CardHead title="Finance decision" sub="Record the approval decision and audit event" />
         <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional review note" className="mb-4 w-full rounded-xl border border-input bg-background p-3 text-sm" rows={3} />
         {message && <p className="mb-3 text-sm">{message}</p>}
         <div className="flex gap-3"><button onClick={() => void decide("APPROVED")} disabled={submitting || !!decision} className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button><button onClick={() => void decide("REJECTED")} disabled={submitting || !!decision} className="inline-flex items-center gap-2 rounded-full border border-destructive/30 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50"><X className="size-4" />Reject</button></div>
-      </Card>
+      </Card> : <Card><CardHead title={awaitingProcurement ? "Read-only · Awaiting Procurement" : "Finance decision unavailable"} sub="This invoice is visible for finance awareness but is not ready for a finance decision." />
+        <p className="text-sm text-muted-foreground">Current status: {invoice.status.replaceAll("_", " ")}. {awaitingProcurement ? "The Procurement Officer must review the bill and forward it to Finance before approval or rejection is available." : "Approval and rejection are only available while an invoice is in Finance Review."}</p>
+      </Card>}
     </div>
   </AppShell>;
 }

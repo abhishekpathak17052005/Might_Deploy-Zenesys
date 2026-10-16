@@ -72,7 +72,14 @@ function InvoiceStatus() {
   const lineItems = rawInvoice?.lineItems?.length ? rawInvoice.lineItems : rawInvoice?.ocrResult?.lineItems || [];
   const amountValue = rawInvoice?.totalAmount ?? rawInvoice?.ocrResult?.totalAmount;
   const amount = Number(amountValue || 0);
+  const formattedAmount = amountValue == null ? "Not extracted" : `₹${amount.toLocaleString("en-IN")}`;
+  const documentMismatch = Boolean(rawInvoice?.ocrResult) && (
+    rawInvoice?.ocrResult?.sourceDocumentId !== rawInvoice?.sourceDocumentId ||
+    rawInvoice?.ocrResult?.sourceDocumentVersion !== rawInvoice?.sourceDocumentVersion ||
+    rawInvoice?.ocrResult?.sourceDocumentSha256 !== rawInvoice?.attachmentSha256
+  );
   const needsExplicitReview = Boolean(rawInvoice?.attachmentSha256 || rawInvoice?.attachmentUrl) && (
+    documentMismatch ||
     rawInvoice?.extractionStatus !== "SUCCEEDED" ||
     rawInvoice?.vendorMatchStatus !== "MATCH" ||
     !["MATCH", "NOT_REQUIRED"].includes(rawInvoice?.poMatchStatus || "")
@@ -85,6 +92,8 @@ function InvoiceStatus() {
           <CardHead icon={<PackageCheck className="size-4.5" />} title="Source and verification" sub="Fields are linked to this invoice's uploaded file" />
           <div className="grid gap-3 text-sm sm:grid-cols-2">
             <p>File SHA-256: <span className="font-mono text-xs">{rawInvoice?.attachmentSha256 || "Not recorded for this upload"}</span></p>
+            <p>Source document: <strong className="font-mono text-xs">{rawInvoice?.sourceDocumentId || "Not linked"}</strong> · version <strong>{rawInvoice?.sourceDocumentVersion || "—"}</strong></p>
+            <p>OCR document match: <strong>{rawInvoice?.ocrResult?.sourceDocumentId === id && rawInvoice?.ocrResult?.sourceDocumentSha256 === rawInvoice?.attachmentSha256 ? "Verified" : rawInvoice?.ocrResult ? "MISMATCH — review required" : "Not processed"}</strong></p>
             <p>OCR: <strong>{rawInvoice?.extractionStatus || "Not recorded"}</strong>{rawInvoice?.extractionError ? ` — ${rawInvoice.extractionError}` : ""}</p>
             <p>Registered vendor: <strong>{rawInvoice?.vendorId?.name || rawInvoice?.vendorName || "Unverified"}</strong></p>
             <p>Vendor name on bill: <strong>{rawInvoice?.ocrResult?.vendorName || "Not extracted"}</strong> · match: <strong>{rawInvoice?.vendorMatchStatus || "UNVERIFIED"}</strong></p>
@@ -98,7 +107,7 @@ function InvoiceStatus() {
         <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
           <Card>
             <CardHead icon={<PackageCheck className="size-4.5" />} title="Materials on this bill" sub="Items extracted from the invoice" />
-            {lineItems.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2">Material / description</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Unit price</th><th className="py-2 text-right">Amount</th></tr></thead><tbody>{lineItems.map((item: any, index: number) => <tr key={index} className="border-b border-border"><td className="py-3">{item.description || "Unlabeled item"}</td><td className="py-3 text-right">{item.quantity ?? "—"}</td><td className="py-3 text-right">₹{Number(item.unitPrice || 0).toLocaleString("en-IN")}</td><td className="py-3 text-right font-semibold">₹{Number(item.amount || 0).toLocaleString("en-IN")}</td></tr>)}</tbody></table><div className="flex justify-between pt-4 text-sm font-bold"><span>Invoice total</span><span>₹{amount.toLocaleString("en-IN")}</span></div></div> : <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">The bill has not been itemized yet. Open the uploaded invoice to check the materials and printed total.</div>}
+            {lineItems.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2">Material / description</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Unit price</th><th className="py-2 text-right">Amount</th></tr></thead><tbody>{lineItems.map((item: any, index: number) => <tr key={index} className="border-b border-border"><td className="py-3">{item.description || "Unlabeled item"}</td><td className="py-3 text-right">{item.quantity ?? "—"}</td><td className="py-3 text-right">{typeof item.unitPrice === "number" ? `₹${item.unitPrice.toLocaleString("en-IN")}` : "—"}</td><td className="py-3 text-right font-semibold">{typeof item.amount === "number" ? `₹${item.amount.toLocaleString("en-IN")}` : "—"}</td></tr>)}</tbody></table><div className="flex justify-between pt-4 text-sm font-bold"><span>Invoice total</span><span>{formattedAmount}</span></div></div> : <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">The bill has not been itemized yet. Open the uploaded invoice to check the materials and printed total.</div>}
           </Card>
           <Card>
             <CardHead icon={<Wallet className="size-4.5" />} title="Vendor balance awaiting payment" sub="Approved invoices in this organization; payment tracking is not configured" />
@@ -112,6 +121,7 @@ function InvoiceStatus() {
         </Card>
         <div className="grid gap-5 lg:grid-cols-2"><InvoiceInformation invoice={invoice} /><Verification invoice={invoice} /><CategoryCard invoice={invoice} /></div>
         <Card><CardHead icon={<Download className="size-4.5" />} title="Original document" sub="Vendor uploaded bill, shown here for review" />{documentUrl ? <><div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted/30">{String(rawInvoice?.attachmentMimeType || "").startsWith("image/") ? <img src={documentUrl} alt="Vendor invoice" className="mx-auto max-h-[780px] max-w-full object-contain" /> : <iframe src={documentUrl} title="Vendor invoice document" className="h-[720px] w-full" />}</div><a href={documentUrl} download={rawInvoice?.invoiceNumber || "vendor-invoice"} className="mt-3 inline-flex rounded-full border border-input px-4 py-2 text-sm font-semibold">Download invoice file</a></> : <p className="mt-3 text-sm text-muted-foreground">{documentError || "Loading the uploaded bill..."}</p>}</Card>
+        {rawInvoice?.ocrResult?.rawText && <Card><CardHead icon={<PackageCheck className="size-4.5" />} title="OCR text and evidence" sub="Text returned by OCR.space for the linked source document" /><details><summary className="cursor-pointer text-sm font-semibold">Show recognized text</summary><pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-4 text-xs">{rawInvoice.ocrResult.rawText}</pre></details><details className="mt-3"><summary className="cursor-pointer text-sm font-semibold">Show field provenance</summary><pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg bg-muted/40 p-4 text-xs">{JSON.stringify(rawInvoice.ocrResult.fieldProvenance || {}, null, 2)}</pre></details></Card>}
         {(["SUBMITTED", "REVIEW_REQUIRED", "OCR_COMPLETED", "PROCUREMENT_REVIEW"].includes(String(rawInvoice?.status))) && <div className="flex justify-end gap-3"><button disabled={busy} onClick={() => act("return")} className="rounded-full border border-destructive/40 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50">Return to vendor</button><button disabled={busy || (needsExplicitReview && !reviewConfirmed)} onClick={() => act("verify")} className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{needsExplicitReview ? "Acknowledge & forward to Finance" : "Verify & forward to Finance"}</button></div>}
       </div>
     </AppShell>

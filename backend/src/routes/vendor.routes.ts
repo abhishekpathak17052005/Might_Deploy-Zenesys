@@ -7,9 +7,10 @@ import { verifyJWTToken, requireRole } from "../middleware/auth.middleware";
 import { sendSuccess, sendError } from "../utils/apiResponse";
 import { badRequest, notFound, forbidden } from "../utils/errors";
 import { extractionService } from "../modules/extraction";
+import { OCRSpaceError, validateInvoiceBytes } from "../modules/extraction/ocrSpaceProvider";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1_000_000 } });
 
 /**
  * POST /api/vendor/register
@@ -116,6 +117,29 @@ router.post(
   }
 );
 
+/** DELETE /api/vendor/organizations/:organizationId */
+router.delete(
+  "/organizations/:organizationId",
+  verifyJWTToken,
+  requireRole("VENDOR"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { organizationId } = req.params;
+      if (!/^[a-f\d]{24}$/i.test(organizationId)) {
+        return sendError(res, "VALIDATION_ERROR", "A valid organization ID is required", 400);
+      }
+      const vendor = await vendorService.getVendorByUserId(req.user!.uid);
+      if (!vendor) return sendError(res, "NOT_FOUND", "Vendor profile not found", 404);
+      const updatedVendor = await vendorService.removeOrganizationFromVendor(vendor._id.toString(), organizationId);
+      return sendSuccess(res, { vendor: updatedVendor });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to remove organization connection";
+      if (message.includes("not found")) return sendError(res, "NOT_FOUND", message, 404);
+      next(error);
+    }
+  }
+);
+
 /**
  * POST /api/vendor/invoices
  * Submit invoice to organization
@@ -138,25 +162,40 @@ router.post(
       if (!req.file) {
         return sendError(res, "VALIDATION_ERROR", "Invoice file is required", 400);
       }
+      try { validateInvoiceBytes(req.file.buffer, req.file.mimetype); }
+      catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid invoice document";
+        return sendError(res, "VALIDATION_ERROR", message, 400);
+      }
 
       // Submit invoice
+      const idempotencyKey = req.header("Idempotency-Key") || undefined;
+      if (!idempotencyKey) return sendError(res, "VALIDATION_ERROR", "Idempotency-Key header is required for invoice uploads", 400);
       let invoice = await invoiceService.submitInvoice(
         req.user!.uid,
         organizationId,
         req.file.originalname,
         req.file.buffer,
-        req.file.mimetype
+        req.file.mimetype,
+        idempotencyKey
       );
 
-      try {
-        const extracted = await extractionService.extract({ documentBuffer: req.file.buffer, mimeType: req.file.mimetype, filename: req.file.originalname });
-        invoice = await invoiceService.saveVendorOCRResult(invoice._id.toString(), extracted);
-      } catch (ocrError) {
-        console.error("vendor.invoice.ocr_failed", { invoiceId: invoice._id.toString(), error: ocrError instanceof Error ? ocrError.message : "Unknown OCR error" });
-        invoice = await invoiceService.markVendorExtractionFailed(invoice._id.toString(), ocrError instanceof Error ? ocrError.message : "Invoice extraction failed.");
+      const claimed = await invoiceService.claimVendorOCR(invoice._id.toString(), organizationId, invoice.attachmentSha256 || "");
+      if (claimed) {
+        try {
+          const extracted = await extractionService.extract({ documentBuffer: req.file.buffer, mimeType: req.file.mimetype, filename: req.file.originalname, sourceDocumentId: invoice.sourceDocumentId, sourceDocumentVersion: invoice.sourceDocumentVersion });
+          invoice = await invoiceService.saveVendorOCRResult(invoice._id.toString(), extracted);
+        } catch (ocrError) {
+          const message = ocrError instanceof OCRSpaceError ? `${ocrError.code}: ${ocrError.message}` : "Invoice extraction failed. The uploaded document is retained for review.";
+          console.error("vendor.invoice.ocr_failed", { invoiceId: invoice._id.toString(), errorCode: ocrError instanceof OCRSpaceError ? ocrError.code : "EXTRACTION_FAILED" });
+          invoice = await invoiceService.markVendorExtractionFailed(invoice._id.toString(), message);
+        }
       }
 
-      return sendSuccess(res, { invoice }, 201);
+      const safeInvoice = invoice.toObject ? invoice.toObject() : { ...invoice };
+      delete safeInvoice.attachmentData;
+      delete safeInvoice.idempotencyKey;
+      return sendSuccess(res, { invoice: safeInvoice }, 201);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit invoice";
       if (message.includes("does not have access")) {
@@ -220,6 +259,69 @@ router.get(
       if (message.includes("do not have access")) {
         return sendError(res, "FORBIDDEN", message, 403);
       }
+      next(error);
+    }
+  }
+);
+
+/** DELETE /api/vendor/invoices/:id — withdraw an invoice request without deleting its audit record. */
+router.delete(
+  "/invoices/:id",
+  verifyJWTToken,
+  requireRole("VENDOR"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!/^[a-f\d]{24}$/i.test(req.params.id)) {
+        return sendError(res, "VALIDATION_ERROR", "A valid invoice ID is required", 400);
+      }
+      const invoice = await invoiceService.withdrawVendorInvoice(req.params.id, req.user!.uid);
+      return sendSuccess(res, { invoice });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to withdraw invoice request";
+      if (message.includes("not found")) return sendError(res, "NOT_FOUND", message, 404);
+      if (message.includes("can no longer be withdrawn")) return sendError(res, "INVALID_STATE", message, 409);
+      next(error);
+    }
+  }
+);
+
+/** POST /api/vendor/invoices/:id/reprocess — retry OCR/structuring from the same stored upload. */
+router.post(
+  "/invoices/:id/reprocess",
+  verifyJWTToken,
+  requireRole("VENDOR"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!/^[a-f\d]{24}$/i.test(req.params.id)) {
+        return sendError(res, "VALIDATION_ERROR", "A valid invoice ID is required", 400);
+      }
+      let invoice = await invoiceService.claimVendorOCRRetry(req.params.id, req.user!.uid);
+      try {
+        const buffer = invoice.attachmentData;
+        if (!buffer) throw new Error("The original uploaded invoice document is unavailable.");
+        const extracted = await extractionService.extract({
+          documentBuffer: buffer,
+          mimeType: invoice.attachmentMimeType || "application/pdf",
+          filename: invoice.attachmentUrl || `invoice-${invoice._id.toString()}`,
+          sourceDocumentId: invoice.sourceDocumentId,
+          sourceDocumentVersion: invoice.sourceDocumentVersion,
+        });
+        invoice = await invoiceService.saveVendorOCRResult(invoice._id.toString(), extracted);
+      } catch (error) {
+        const message = error instanceof OCRSpaceError
+          ? `${error.code}: ${error.message}`
+          : error instanceof Error ? error.message : "Invoice reprocessing failed. The original document is retained for review.";
+        invoice = await invoiceService.markVendorExtractionFailed(invoice._id.toString(), message);
+      }
+      const safeInvoice = invoice.toObject ? invoice.toObject() : { ...invoice };
+      delete safeInvoice.attachmentData;
+      delete safeInvoice.idempotencyKey;
+      return sendSuccess(res, { invoice: safeInvoice });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to reprocess invoice";
+      if (message.includes("not found")) return sendError(res, "NOT_FOUND", message, 404);
+      if (message.includes("already processing") || message.includes("state has changed")) return sendError(res, "CONFLICT", message, 409);
+      if (message.includes("unavailable") || message.includes("hash does not match")) return sendError(res, "INVALID_STATE", message, 409);
       next(error);
     }
   }

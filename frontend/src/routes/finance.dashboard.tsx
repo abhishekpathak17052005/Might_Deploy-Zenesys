@@ -37,6 +37,7 @@ export const Route = createFileRoute("/finance/dashboard")({
 function FinanceDashboard() {
   const navigate = useNavigate();
   const [financeQueue, setFinanceQueue] = useState<InvoiceDocument[]>([]);
+  const [awaitingProcurement, setAwaitingProcurement] = useState<InvoiceDocument[]>([]);
   const [stats, setStats] = useState({
     pending: 0,
     approved: 0,
@@ -62,13 +63,20 @@ function FinanceDashboard() {
         if (queueResult.success && queueResult.data) {
           const queue = queueResult.data.invoices;
           setFinanceQueue(queue);
+          setAwaitingProcurement(queueResult.data.awaitingProcurement || []);
 
           // Calculate stats from actual data
           const statsResult = await apiClient.getApprovalStats(token);
-          if (statsResult.success && statsResult.data) setStats(statsResult.data);
+          if (statsResult.success && statsResult.data) setStats({
+            ...statsResult.data,
+            pending: queue.length,
+            totalValue: queue.reduce((sum, invoice) => sum + (Number(invoice.totalAmount) || 0), 0),
+          });
           else setStats({ pending: queue.length, approved: 0, rejected: 0, totalValue: queue.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) });
           setError(null);
         } else {
+          setFinanceQueue([]);
+          setAwaitingProcurement([]);
           const code = (queueResult.error as any)?.code;
           const isAuthError = code === "FORBIDDEN" || code === "UNAUTHORIZED" ||
             queueResult.error?.message?.toLowerCase().includes("permission") ||
@@ -242,6 +250,30 @@ function FinanceDashboard() {
           </div>
         </Card>
       </div>
+
+      {awaitingProcurement.length > 0 && <Card className="mt-5">
+        <CardHead
+          icon={<AlertCircle className="size-4.5" />}
+          title="Invoices visible to Finance · Awaiting Procurement"
+          sub="You can inspect these bills now. Procurement must verify and forward them before Finance can approve or reject."
+        />
+        <div className="flex flex-col gap-3">
+          {awaitingProcurement.slice(0, 5).map((inv) => (
+            <Link
+              key={inv._id || inv.id}
+              to="/finance/invoices/$id"
+              params={{ id: inv._id || inv.id }}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-muted"
+            >
+              <span>
+                <span className="block text-sm font-bold">{inv.invoiceNumber || (inv._id || inv.id).slice(0, 8)}</span>
+                <span className="block text-xs text-muted-foreground">{resolveVendorName(inv)} · {String(inv.status || "SUBMITTED").replaceAll("_", " ")}</span>
+              </span>
+              <span className="text-sm font-extrabold">{inr(Number(inv.totalAmount) || 0)}</span>
+            </Link>
+          ))}
+        </div>
+      </Card>}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_1fr]">
         <Card>

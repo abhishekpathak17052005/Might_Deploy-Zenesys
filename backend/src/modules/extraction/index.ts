@@ -3,3 +3,7 @@ export * from "./extraction.schemas";
 export * from "./extraction.service";
 export * from "./extraction.types";
 export * from "./extraction.validator";
+export * from "./ocrSpaceProvider";
+export * from "./documentProvenance";
+export * from "./geminiTextStructurer";
+export * from "./ocrSpaceInvoiceProvider";

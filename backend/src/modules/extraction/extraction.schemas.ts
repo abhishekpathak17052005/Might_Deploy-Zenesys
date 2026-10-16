@@ -5,8 +5,9 @@ const confidenceSchema = z.number().min(0).max(1).optional();
 
 const stringFieldSchema = z.union([
   z.string().min(1),
+  z.null(),
   z.object({
-    value: z.string().min(1),
+    value: z.string().min(1).nullable(),
     confidence: confidenceSchema
   })
 ]);
@@ -21,8 +22,9 @@ const optionalStringFieldSchema = z.union([
 
 const numberFieldSchema = z.union([
   z.number().finite(),
+  z.null(),
   z.object({
-    value: z.number().finite(),
+    value: z.number().finite().nullable(),
     confidence: confidenceSchema
   })
 ]);
@@ -34,18 +36,21 @@ const dateString = z.string().refine((value) => {
 
 export const geminiInvoiceItemSchema = z.object({
   description: z.string().min(1),
-  quantity: z.number().finite().nonnegative(),
-  unit_price: z.number().finite().nonnegative(),
+  quantity: z.number().finite().nonnegative().nullable(),
+  unit_price: z.number().finite().nonnegative().nullable(),
   tax_rate: z.number().finite().nonnegative().optional().nullable(),
-  amount: z.number().finite().nonnegative()
+  amount: z.number().finite().nonnegative().nullable()
 });
+
+const dateFieldSchema = z.union([
+  dateString,
+  z.null(),
+  z.object({ value: dateString.nullable(), confidence: confidenceSchema }),
+]);
 
 export const geminiExtractionResponseSchema = z.object({
   invoice_number: stringFieldSchema,
-  invoice_date: stringFieldSchema.pipe(z.union([
-    dateString,
-    z.object({ value: dateString.nullable(), confidence: confidenceSchema })
-  ])),
+  invoice_date: dateFieldSchema,
   vendor_name: stringFieldSchema,
   gstin: optionalStringFieldSchema.optional().nullable(),
   po_number: optionalStringFieldSchema.optional().nullable(),
@@ -53,7 +58,7 @@ export const geminiExtractionResponseSchema = z.object({
   tax: numberFieldSchema,
   total: numberFieldSchema,
   due_date: optionalStringFieldSchema.optional().nullable(),
-  items: z.array(geminiInvoiceItemSchema).min(1)
+  items: z.array(geminiInvoiceItemSchema)
 });
 
 export const structuredInvoiceSchema = z.object({
@@ -68,9 +73,9 @@ export const structuredInvoiceSchema = z.object({
   dueDate: z.date().nullable().optional(),
   items: z.array(z.object({
     description: z.string().min(1),
-    quantity: z.number().finite().nonnegative(),
-    unitPrice: z.number().finite().nonnegative(),
+    quantity: z.number().finite().nonnegative().nullable(),
+    unitPrice: z.number().finite().nonnegative().nullable(),
     taxRate: z.number().finite().nonnegative().nullable().optional(),
-    amount: z.number().finite().nonnegative()
+    amount: z.number().finite().nonnegative().nullable()
   })).min(1)
 });

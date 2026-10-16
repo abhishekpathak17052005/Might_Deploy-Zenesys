@@ -39,6 +39,8 @@ export function resolveVendorName(inv: {
 export interface InvoiceDocument {
   id: string;
   _id?: string;
+  status?: string;
+  extractionStatus?: string;
   invoiceNumber: string;
   vendorId: string | PopulatedVendor;
   vendorName?: string;
@@ -318,7 +320,7 @@ class ApiClient {
    * Get invoices pending finance review.
    */
   async getFinanceReviewQueue(token: string, limit: number = 20) {
-    return this.request<{ count: number; invoices: InvoiceDocument[] }>(`/finance/review?limit=${limit}`, {
+    return this.request<{ count: number; invoices: InvoiceDocument[]; awaitingProcurement: InvoiceDocument[] }>(`/finance/review?limit=${limit}`, {
       method: "GET",
       token
     });

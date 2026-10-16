@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { EXTRACTION_MODEL } from "./extraction.constants";
 import { geminiExtractionResponseSchema } from "./extraction.schemas";
 import { validateExtractedInvoiceMath } from "./extraction.validator";
 import { geminiExtractionProvider } from "./geminiExtractionProvider";
 import { ollamaGlmOcrProvider } from "./ollamaGlmOcrProvider";
 import { groqExtractionProvider } from "./groqExtractionProvider";
+import { ocrSpaceInvoiceProvider } from "./ocrSpaceInvoiceProvider";
 import type {
   ExtractionConfidence,
   ExtractionResult,
@@ -50,7 +52,9 @@ export class ExtractionService {
   constructor(private readonly provider: InvoiceExtractionProvider = ExtractionService.getProvider()) {}
 
   private static getProvider(): InvoiceExtractionProvider {
-    const providerType = process.env.EXTRACTION_PROVIDER || "gemini";
+    const providerType = process.env.EXTRACTION_PROVIDER || "ocr_space";
+
+    if (providerType === "ocr_space") return ocrSpaceInvoiceProvider;
     
     if (providerType === "ollama") {
       return ollamaGlmOcrProvider;
@@ -67,12 +71,20 @@ export class ExtractionService {
     documentBuffer: Buffer;
     mimeType: string;
     filename: string;
+    sourceDocumentId?: string;
+    sourceDocumentVersion?: number;
   }): Promise<ExtractionResult> {
     const raw = await this.provider.extractInvoice(input);
-    return this.normalize(raw);
+    return {
+      ...this.normalize(raw),
+      sourceDocumentId: input.sourceDocumentId,
+      sourceDocumentVersion: input.sourceDocumentVersion,
+      sourceDocumentSha256: createHash("sha256").update(input.documentBuffer).digest("hex"),
+    };
   }
 
   normalize(raw: unknown): ExtractionResult {
+    const providerType = process.env.EXTRACTION_PROVIDER || "ocr_space";
     const parsed = geminiExtractionResponseSchema.safeParse(raw);
     if (!parsed.success) {
       throw new z.ZodError(parsed.error.issues);
@@ -122,13 +134,19 @@ export class ExtractionService {
 
     const validation = validateExtractedInvoiceMath(invoice);
 
+    const structuringProvider = typeof (raw as any)?.structuringProvider === "string" ? (raw as any).structuringProvider : undefined;
+    const provider = providerType === "ocr_space" && structuringProvider
+      ? `ocr_space+${structuringProvider}`
+      : providerType;
     return {
       raw,
       invoice,
       confidence,
       validation,
-      provider: process.env.EXTRACTION_PROVIDER || "gemini",
-      model: EXTRACTION_MODEL,
+      provider,
+      model: typeof (raw as any)?.structuringModel === "string"
+        ? (raw as any).structuringModel
+        : providerType === "ocr_space" ? "OCR.space Engine 2" : EXTRACTION_MODEL,
       extractedAt: new Date()
     };
   }

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { requireRole } from '@/lib/route-guards'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 
 export const Route = createFileRoute('/vendor/invoices/')({
@@ -16,9 +16,11 @@ interface Invoice {
   createdAt: string
   organizationId: string
   organizationName?: string
+  extractionStatus?: string
+  extractionError?: string
 }
 
-type InvoiceStatus = 'SUBMITTED' | 'OCR_PROCESSING' | 'OCR_COMPLETED' | 'PROCUREMENT_REVIEW' | 'APPROVED' | 'REJECTED' | 'ON_HOLD'
+type InvoiceStatus = 'SUBMITTED' | 'REVIEW_REQUIRED' | 'OCR_PROCESSING' | 'OCR_COMPLETED' | 'PROCUREMENT_REVIEW' | 'APPROVED' | 'REJECTED' | 'ON_HOLD' | 'RETURNED_TO_VENDOR' | 'WITHDRAWN'
 
 export function VendorInvoicesList() {
   const navigate = useNavigate()
@@ -26,6 +28,29 @@ export function VendorInvoicesList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'ALL'>('ALL')
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const withdrawInvoice = async (event: MouseEvent, invoice: Invoice) => {
+    event.stopPropagation()
+    if (!window.confirm('Withdraw this invoice request? The invoice and uploaded document will remain in your history.')) return
+    setWithdrawingId(invoice._id)
+    setActionError(null)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/vendor/invoices/${encodeURIComponent(invoice._id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token || ''}` },
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error?.message || 'Could not withdraw this invoice request.')
+      setInvoices((current) => current.map((item) => item._id === invoice._id ? { ...item, status: 'WITHDRAWN' } : item))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not withdraw this invoice request.')
+    } finally {
+      setWithdrawingId(null)
+    }
+  }
 
   useEffect(() => {
     fetchInvoices()
@@ -80,6 +105,12 @@ export function VendorInvoicesList() {
         return 'bg-yellow-100 text-yellow-800'
       case 'OCR_COMPLETED':
         return 'bg-purple-100 text-purple-800'
+      case 'REVIEW_REQUIRED':
+        return 'bg-amber-100 text-amber-900'
+      case 'RETURNED_TO_VENDOR':
+        return 'bg-red-100 text-red-800'
+      case 'WITHDRAWN':
+        return 'bg-gray-200 text-gray-700'
       case 'PROCUREMENT_REVIEW':
         return 'bg-orange-100 text-orange-800'
       case 'APPROVED':
@@ -131,11 +162,12 @@ export function VendorInvoicesList() {
             <p className="text-red-700 mt-1">{error}</p>
           </div>
         )}
+        {actionError && <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{actionError}</div>}
 
         {/* Status Filter */}
         <div className="bg-white rounded-lg shadow-lg p-4 mb-8">
           <div className="flex flex-wrap gap-2">
-            {(['ALL', 'SUBMITTED', 'OCR_PROCESSING', 'OCR_COMPLETED', 'APPROVED', 'REJECTED'] as const).map((status) => (
+            {(['ALL', 'SUBMITTED', 'REVIEW_REQUIRED', 'OCR_PROCESSING', 'OCR_COMPLETED', 'APPROVED', 'REJECTED', 'WITHDRAWN'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -190,7 +222,7 @@ export function VendorInvoicesList() {
                       <div>
                         <p className="text-xs text-gray-500">Amount</p>
                         <p className="font-semibold text-gray-800">
-                          ${(invoice.totalAmount || 0).toFixed(2)}
+                          {typeof invoice.totalAmount === 'number' ? `₹${invoice.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Not extracted'}
                         </p>
                       </div>
                       <div>
@@ -215,7 +247,18 @@ export function VendorInvoicesList() {
                     >
                       {invoice.status.replace(/_/g, ' ')}
                     </span>
+                    {invoice.extractionError && <p className="mt-2 max-w-sm text-xs text-amber-800">OCR review: {invoice.extractionError}</p>}
                   </div>
+                  {['SUBMITTED', 'REVIEW_REQUIRED', 'OCR_PROCESSING', 'OCR_COMPLETED', 'PROCUREMENT_REVIEW'].includes(invoice.status) && (
+                    <button
+                      type="button"
+                      onClick={(event) => withdrawInvoice(event, invoice)}
+                      disabled={withdrawingId === invoice._id}
+                      className="ml-4 shrink-0 rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {withdrawingId === invoice._id ? 'Withdrawing…' : 'Withdraw request'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -234,7 +277,7 @@ export function VendorInvoicesList() {
               <div>
                 <p className="text-gray-600 text-sm">Total Amount</p>
                 <p className="text-2xl font-bold text-gray-800">
-                  ${invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0).toFixed(2)}
+                  ₹{invoices.reduce((sum, inv) => sum + (typeof inv.totalAmount === 'number' ? inv.totalAmount : 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs font-normal">(known amounts)</span>
                 </p>
               </div>
               <div>
@@ -247,7 +290,7 @@ export function VendorInvoicesList() {
                 <p className="text-gray-600 text-sm">Pending Review</p>
                 <p className="text-2xl font-bold text-yellow-600">
                   {invoices.filter((inv) =>
-                    ['SUBMITTED', 'OCR_PROCESSING', 'OCR_COMPLETED', 'PROCUREMENT_REVIEW'].includes(inv.status)
+                    ['SUBMITTED', 'REVIEW_REQUIRED', 'OCR_PROCESSING', 'OCR_COMPLETED', 'PROCUREMENT_REVIEW'].includes(inv.status)
                   ).length}
                 </p>
               </div>

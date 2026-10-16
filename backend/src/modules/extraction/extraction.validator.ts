@@ -28,12 +28,13 @@ export function validateExtractedInvoiceMath(invoice: StructuredInvoiceData): Ex
   const findings: ExtractionValidationFinding[] = [];
 
   invoice.items.forEach((item, index) => {
-    addNegativeFinding(findings, `items.${index}.quantity`, item.quantity);
-    addNegativeFinding(findings, `items.${index}.unitPrice`, item.unitPrice);
-    addNegativeFinding(findings, `items.${index}.amount`, item.amount);
+    if (item.quantity !== null) addNegativeFinding(findings, `items.${index}.quantity`, item.quantity);
+    if (item.unitPrice !== null) addNegativeFinding(findings, `items.${index}.unitPrice`, item.unitPrice);
+    if (item.amount !== null) addNegativeFinding(findings, `items.${index}.amount`, item.amount);
 
-    const expected = item.quantity * item.unitPrice;
-    if (!moneyMatches(expected, item.amount)) {
+    if (item.quantity !== null && item.unitPrice !== null && item.amount !== null) {
+      const expected = item.quantity * item.unitPrice;
+      if (moneyMatches(expected, item.amount)) return;
       findings.push({
         type: "LINE_ITEM_AMOUNT_MISMATCH",
         field: `items.${index}.amount`,
@@ -54,8 +55,9 @@ export function validateExtractedInvoiceMath(invoice: StructuredInvoiceData): Ex
   addNegativeFinding(findings, "tax", invoice.tax);
   addNegativeFinding(findings, "total", invoice.total);
 
-  const expectedSubtotal = invoice.items.reduce((sum, item) => sum + item.amount, 0);
-  if (!moneyMatches(expectedSubtotal, invoice.subtotal)) {
+  const allItemAmountsKnown = invoice.items.every((item) => item.amount !== null);
+  const expectedSubtotal = allItemAmountsKnown ? invoice.items.reduce((sum, item) => sum + (item.amount ?? 0), 0) : null;
+  if (expectedSubtotal !== null && !moneyMatches(expectedSubtotal, invoice.subtotal)) {
     findings.push({
       type: "SUBTOTAL_MISMATCH",
       field: "subtotal",
@@ -67,7 +69,7 @@ export function validateExtractedInvoiceMath(invoice: StructuredInvoiceData): Ex
   }
 
   const expectedTotal = invoice.subtotal + invoice.tax;
-  if (!moneyMatches(expectedTotal, invoice.total)) {
+  if (invoice.subtotal > 0 && !moneyMatches(expectedTotal, invoice.total)) {
     findings.push({
       type: "TOTAL_MISMATCH",
       field: "total",

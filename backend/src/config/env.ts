@@ -32,20 +32,29 @@ const envSchema = z.object({
   
   // Gemini AI
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_EXTRACTION_MODEL: z.string().default("gemini-1.5-flash"),
+  GEMINI_EXTRACTION_MODEL: z.string().default("gemini-3.6-flash"),
   GEMINI_CATEGORIZATION_MODEL: z.string().default("gemini-1.5-flash"),
   EXTRACTION_MONEY_TOLERANCE: z.coerce.number().nonnegative().default(0.01),
   
   // Groq AI
   GROQ_API_KEY: z.string().optional(),
-  GROQ_EXTRACTION_MODEL: z.string().default("llama-3.2-11b-vision-preview"),
+  GROQ_EXTRACTION_MODEL: z.string().default("qwen/qwen3.8-27b"),
+  PRIMARY_STRUCTURER: z.enum(["groq", "gemini"]).default("groq"),
   
   // OCR Provider
-  EXTRACTION_PROVIDER: z.enum(["gemini", "ollama", "groq"]).default("gemini"),
+  EXTRACTION_PROVIDER: z.enum(["gemini", "ollama", "groq", "ocr_space"]).default("ocr_space"),
+  OCR_SPACE_API_KEY: optionalString,
+  OCR_SPACE_ENDPOINT: z.string().url().default("https://api.ocr.space/parse/image"),
   OLLAMA_URL: z.string().url().optional(),
   OLLAMA_MODEL: z.string().optional(),
   OLLAMA_TIMEOUT: z.coerce.number().optional(),
 }).superRefine((env, ctx) => {
+  if (env.EXTRACTION_PROVIDER === "ocr_space" && !env.OCR_SPACE_API_KEY) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["OCR_SPACE_API_KEY"], message: "OCR_SPACE_API_KEY is required when OCR_SPACE is selected" });
+  }
+  if (env.EXTRACTION_PROVIDER === "ocr_space" && env.OCR_SPACE_ENDPOINT && new URL(env.OCR_SPACE_ENDPOINT).protocol !== "https:") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["OCR_SPACE_ENDPOINT"], message: "OCR_SPACE_ENDPOINT must use HTTPS" });
+  }
   if (env.NODE_ENV !== "production") return;
 
   // Check if using MongoDB

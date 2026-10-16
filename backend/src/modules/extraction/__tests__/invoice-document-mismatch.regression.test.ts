@@ -6,6 +6,7 @@ import { Invoice } from "../../../models/Invoice";
 import { compareVendorIdentity } from "../../../services/InvoiceService";
 import { AnomalyEngine } from "../../anomaly/anomaly.engine";
 import { ExtractionService } from "../extraction.service";
+import { extractionMatchesSourceDocument } from "../documentProvenance";
 import { GeminiExtractionProvider } from "../geminiExtractionProvider";
 import type { InvoiceExtractionProvider } from "../extraction.types";
 
@@ -42,8 +43,13 @@ describe("invoice document mismatch regression", () => {
       documentBuffer: original,
       mimeType: "application/pdf",
       filename: "om-caterers.pdf",
+      sourceDocumentId: "synthetic-document-1",
+      sourceDocumentVersion: 1,
     });
     const attachmentSha256 = createHash("sha256").update(original).digest("hex");
+    assert.equal(result.sourceDocumentSha256, attachmentSha256);
+    assert.equal(result.sourceDocumentId, "synthetic-document-1");
+    assert.equal(result.sourceDocumentVersion, 1);
     const record = new Invoice({
       _id: new Types.ObjectId(),
       organizationId: new Types.ObjectId(),
@@ -78,6 +84,18 @@ describe("invoice document mismatch regression", () => {
       documentBuffer: Buffer.from("catering invoice"), mimeType: "application/pdf", filename: "bill.pdf",
     });
     assert.equal(result.confidence.total.status, "UNCERTAIN");
+  });
+
+  it("keeps the OCR result hash tied to the actual uploaded file", async () => {
+    const bytes = Buffer.from("synthetic invoice file A");
+    const result = await new ExtractionService(new StaticProvider(cateringOCR)).extract({ documentBuffer: bytes, mimeType: "application/pdf", filename: "a.pdf", sourceDocumentId: "doc-a", sourceDocumentVersion: 1 });
+    assert.equal(result.sourceDocumentSha256, createHash("sha256").update(bytes).digest("hex"));
+    assert.notEqual(result.sourceDocumentSha256, createHash("sha256").update("synthetic invoice file B").digest("hex"));
+    const source = { documentId: "doc-a", version: 1, sha256: result.sourceDocumentSha256 };
+    assert.equal(extractionMatchesSourceDocument({ ...result, sourceDocumentId: "doc-a", sourceDocumentVersion: 1 }, source), true);
+    assert.equal(extractionMatchesSourceDocument({ ...result, sourceDocumentId: "doc-b", sourceDocumentVersion: 1 }, source), false);
+    assert.equal(extractionMatchesSourceDocument({ ...result, sourceDocumentId: "doc-a", sourceDocumentVersion: 2 }, source), false);
+    assert.equal(extractionMatchesSourceDocument({ ...result, sourceDocumentId: "doc-a", sourceDocumentVersion: 1, sourceDocumentSha256: createHash("sha256").update("other file").digest("hex") }, source), false);
   });
 
   it("evaluates risk using catering invoice fields and flags an unverified PO", async () => {
