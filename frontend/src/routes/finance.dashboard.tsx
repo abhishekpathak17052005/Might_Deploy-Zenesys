@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   AlertCircle,
@@ -10,10 +10,12 @@ import {
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, Dot, StatCard } from "@/components/kit";
-import { categoryMix, invoices, inr, monthlyVolume } from "@/lib/mock-data";
-import { apiClient, type InvoiceDocument } from "@/lib/api";
+import { inr } from "@/lib/mock-data";
+import { apiClient, resolveVendorName, type InvoiceDocument } from "@/lib/api";
+import { requireRole } from "@/lib/route-guards";
 
 export const Route = createFileRoute("/finance/dashboard")({
+  beforeLoad: () => requireRole(["FINANCE_MANAGER", "ORGANIZATION_ADMIN"]),
   head: () => ({
     meta: [
       { title: "Finance Dashboard — InvoiceFlow" },
@@ -33,6 +35,7 @@ export const Route = createFileRoute("/finance/dashboard")({
 });
 
 function FinanceDashboard() {
+  const navigate = useNavigate();
   const [financeQueue, setFinanceQueue] = useState<InvoiceDocument[]>([]);
   const [stats, setStats] = useState({
     pending: 0,
@@ -49,7 +52,8 @@ function FinanceDashboard() {
         setLoading(true);
         const token = localStorage.getItem("token");
         if (!token) {
-          setError("No authentication token");
+          // No token at all — send back to login
+          navigate({ to: "/" });
           return;
         }
 
@@ -59,16 +63,26 @@ function FinanceDashboard() {
           const queue = queueResult.data.invoices;
           setFinanceQueue(queue);
 
-          // Calculate stats
-          const approved = queue.filter((inv) => inv.approvalStatus === "APPROVED").length;
-          const rejected = queue.filter((inv) => inv.approvalStatus === "REJECTED").length;
-          const pending = queue.filter((inv) => inv.approvalStatus === "PENDING").length;
-          const totalValue = queue.reduce((sum, inv) => sum + inv.totalAmount, 0);
-
-          setStats({ pending, approved, rejected, totalValue });
+          // Calculate stats from actual data
+          const statsResult = await apiClient.getApprovalStats(token);
+          if (statsResult.success && statsResult.data) setStats(statsResult.data);
+          else setStats({ pending: queue.length, approved: 0, rejected: 0, totalValue: queue.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) });
           setError(null);
         } else {
-          setError(result.error?.message || "Failed to fetch review queue");
+          const code = (queueResult.error as any)?.code;
+          const isAuthError = code === "FORBIDDEN" || code === "UNAUTHORIZED" ||
+            queueResult.error?.message?.toLowerCase().includes("permission") ||
+            queueResult.error?.message?.toLowerCase().includes("unauthorized");
+
+          if (isAuthError) {
+            // Stale / wrong-role token — clear it and go back to login
+            localStorage.removeItem("token");
+            localStorage.removeItem("invoiceflow_token");
+            navigate({ to: "/" });
+            return;
+          }
+
+          setError(queueResult.error?.message || "Failed to fetch review queue");
         }
       } catch (err) {
         console.error("Failed to load dashboard", err);
@@ -86,7 +100,21 @@ function FinanceDashboard() {
     .filter((inv) => inv.riskResult && inv.riskResult.riskLevel !== "LOW")
     .slice(0, 4);
 
-  const max = Math.max(...monthlyVolume.map((m) => m.a));
+  const monthlyVolume = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date(); date.setMonth(date.getMonth() - (5 - i));
+    const label = date.toLocaleString("en", { month: "short" });
+    const monthInvoices = financeQueue.filter((inv) => {
+      const submitted = new Date(inv.submittedAt || (inv as any).createdAt);
+      return submitted.getMonth() === date.getMonth() && submitted.getFullYear() === date.getFullYear();
+    });
+    return { label, a: monthInvoices.filter((inv) => inv.approvalStatus === "APPROVED").length, b: monthInvoices.filter((inv) => inv.approvalStatus === "REJECTED").length };
+  });
+  const max = Math.max(1, ...monthlyVolume.flatMap((m) => [m.a, m.b]));
+  const categoryMix = Object.entries(financeQueue.reduce<Record<string, number>>((counts, inv) => {
+    const category = inv.category?.category || "Uncategorized";
+    counts[category] = (counts[category] || 0) + 1;
+    return counts;
+  }, {})).map(([label, value]) => ({ label, value, up: false, delta: `${value} invoices` }));
 
   const getRiskColor = (level?: string) => {
     switch (level) {
@@ -119,7 +147,7 @@ function FinanceDashboard() {
         <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-700">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" />
-            <span>{error} (using mock data)</span>
+            <span>{error}</span>
           </div>
         </div>
       )}
@@ -247,7 +275,7 @@ function FinanceDashboard() {
                     />
                     <span>
                       <span className="block text-sm font-bold">
-                        {inv.invoiceNumber} · {inv.vendorName || inv.vendorId}
+                        {inv.invoiceNumber} · {resolveVendorName(inv as any)}
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {inv.riskResult?.findings?.[0]?.message || "Risk detected"}

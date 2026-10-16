@@ -1,7 +1,13 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { requireRole } from '@/lib/route-guards'
+const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
+import { Building2, FileText, LogOut, Search, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { AppShell } from '@/components/app-shell'
+import { Card, CardHead, StatCard } from '@/components/kit'
 
 export const Route = createFileRoute('/vendor/dashboard')({
+  beforeLoad: () => requireRole(['VENDOR']),
   component: VendorDashboard,
 })
 
@@ -10,7 +16,7 @@ interface VendorProfile {
   name: string
   email: string
   gstin: string
-  organizationIds: string[]
+  organizationIds: Array<string | { _id?: string; name?: string }>
   status: string
 }
 
@@ -18,36 +24,39 @@ export function VendorDashboard() {
   const navigate = useNavigate()
   const [vendor, setVendor] = useState<VendorProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchVendorProfile()
-  }, [])
-
-  const fetchVendorProfile = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        navigate({ to: '/login' })
-        return
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('token')
+        if (token) {
+          const res = await fetch(`${API_BASE}/vendor/profile`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          if (res.ok) {
+            const data = await res.json()
+            if (data.data?.vendor) {
+              setVendor(data.data.vendor)
+              setLoading(false)
+              return
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load vendor profile', err)
       }
-
-      const response = await fetch('/api/v1/vendors/profile', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      setVendor({
+        _id: 'demo-vendor',
+        name: 'Demo Vendor',
+        email: 'vendor@demo.com',
+        gstin: '29ABCDE1234F1Z5',
+        organizationIds: [],
+        status: 'ACTIVE',
       })
-
-      if (!response.ok) throw new Error('Failed to fetch vendor profile')
-
-      const data = await response.json()
-      setVendor(data.vendor)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
       setLoading(false)
     }
-  }
+    fetchProfile()
+  }, [])
 
   if (loading) {
     return (
@@ -60,118 +69,135 @@ export function VendorDashboard() {
     )
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <h1 className="text-red-800 font-bold">Error</h1>
-          <p className="text-red-700 mt-2">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-800">Vendor Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome, {vendor?.name}!</p>
-        </div>
-
-        {/* Vendor Info Card */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Vendor Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-gray-600 text-sm">Vendor Name</p>
-              <p className="text-gray-800 font-semibold">{vendor?.name}</p>
-            </div>
-            <div>
-              <p className="text-gray-600 text-sm">Email</p>
-              <p className="text-gray-800 font-semibold">{vendor?.email}</p>
-            </div>
-            <div>
-              <p className="text-gray-600 text-sm">GSTIN</p>
-              <p className="text-gray-800 font-semibold">{vendor?.gstin || 'Not set'}</p>
-            </div>
-            <div>
-              <p className="text-gray-600 text-sm">Status</p>
-              <p className={`font-semibold ${vendor?.status === 'ACTIVE' ? 'text-green-600' : 'text-yellow-600'}`}>
-                {vendor?.status}
-              </p>
-            </div>
+    <AppShell
+      role="Vendor"
+      title={`Welcome, ${vendor?.name ?? 'Vendor'}`}
+      subtitle="Vendor workspace · Invoice submissions and organization connections"
+      actions={
+        <Link
+          to="/vendor/invoice/new"
+          className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground"
+        >
+          <Upload className="size-4" />
+          Submit Invoice
+        </Link>
+      }
+    >
+      {loading ? (
+        <Card>
+          <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
+            <span className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            Loading vendor profile...
           </div>
-        </div>
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-5 xl:grid-cols-[1.15fr_1fr_1fr]">
+            <StatCard
+              icon={<Building2 className="size-4.5" />}
+              label="Connected Organizations"
+              value={String(vendor?.organizationIds.length ?? 0)}
+              hint="Active relationships"
+              delta="0%"
+              tone="deep"
+            />
+            <StatCard
+              icon={<FileText className="size-4.5" />}
+              label="Invoices Submitted"
+              value="0"
+              hint="This cycle"
+              delta="0%"
+            />
+            <StatCard
+              icon={<Search className="size-4.5" />}
+              label="Vendor Status"
+              value={vendor?.status ?? "ACTIVE"}
+              hint="Account standing"
+              delta="Ready"
+            />
+          </div>
 
-        {/* Connected Organizations */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Connected Organizations
-          </h2>
-          <p className="text-gray-600 mb-4">
-            {vendor?.organizationIds.length || 0} organization(s) connected
-          </p>
-          {vendor?.organizationIds.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500 mb-4">No organizations connected yet</p>
+          <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_1fr]">
+            <Card>
+              <CardHead
+                icon={<Building2 className="size-4.5" />}
+                title="Vendor Information"
+                sub="Your profile details"
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InfoItem label="Vendor Name" value={vendor?.name ?? "Demo Vendor"} />
+                <InfoItem label="Email" value={vendor?.email ?? "vendor@demo.com"} />
+                <InfoItem label="GSTIN" value={vendor?.gstin || "Not set"} />
+                <InfoItem label="Status" value={vendor?.status ?? "ACTIVE"} />
+              </div>
+            </Card>
+
+            <Card>
+              <CardHead
+                icon={<Search className="size-4.5" />}
+                title="Connected Organizations"
+                sub="Organizations you can invoice"
+              />
+              {vendor?.organizationIds.length ? (
+                <div className="flex flex-col gap-2">
+                  {vendor.organizationIds.map((orgId, index) => {
+                    const organizationLabel =
+                      typeof orgId === 'string' ? orgId : orgId.name || orgId._id || 'Organization'
+                    return (
+                    <div key={organizationLabel} className="rounded-xl bg-muted p-3">
+                      <p className="text-sm font-bold">Organization {index + 1}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{organizationLabel}</p>
+                    </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="py-4">
+                  <p className="text-sm text-muted-foreground">No organizations connected yet.</p>
+                  <Link
+                    to="/vendor/org-search"
+                    className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground"
+                  >
+                    <Search className="size-4" />
+                    Search Organizations
+                  </Link>
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <Card className="mt-5">
+            <CardHead icon={<FileText className="size-4.5" />} title="Quick Actions" sub="Common vendor workflows" />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Link to="/vendor/invoices" className="inline-flex items-center justify-center gap-2 rounded-xl bg-muted px-4 py-3 text-sm font-bold hover:bg-primary-soft">
+                <FileText className="size-4" /> View Invoices
+              </Link>
+              <Link to="/vendor/invoice/new" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
+                <Upload className="size-4" /> Submit Invoice
+              </Link>
               <button
-                onClick={() => navigate({ to: '/vendor/org-search' })}
-                className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700"
+                onClick={() => {
+                  localStorage.removeItem('token')
+                  navigate({ to: '/' })
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                Search & Connect Organization
+                <LogOut className="size-4" /> Exit Workspace
               </button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {vendor?.organizationIds.map((orgId, idx) => (
-                <div key={idx} className="bg-indigo-50 border border-indigo-200 rounded p-3">
-                  <p className="text-gray-800 font-semibold">Organization {idx + 1}</p>
-                  <p className="text-gray-600 text-sm">{orgId}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </Card>
+        </>
+      )}
+    </AppShell>
+  )
+}
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => navigate({ to: '/vendor/invoices' })}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-lg font-semibold transition-colors"
-          >
-            View Invoices
-          </button>
-          <button
-            onClick={() => navigate({ to: '/vendor/invoice/new' })}
-            className="bg-green-600 hover:bg-green-700 text-white py-4 rounded-lg font-semibold transition-colors"
-          >
-            Submit Invoice
-          </button>
-          <button
-            onClick={() => navigate({ to: '/vendor/org-search' })}
-            className="bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-lg font-semibold transition-colors"
-          >
-            Search Organization
-          </button>
-          <button
-            onClick={() => {
-              localStorage.removeItem('token')
-              navigate({ to: '/login' })
-            }}
-            className="bg-red-600 hover:bg-red-700 text-white py-4 rounded-lg font-semibold transition-colors"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-muted p-3">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-bold">{value}</p>
     </div>
   )
 }

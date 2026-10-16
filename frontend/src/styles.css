@@ -158,6 +158,98 @@ button, a {
   transition-timing-function: cubic-bezier(.22, 1, .36, 1);
 }
 
+/* Keep legacy vendor screens on the shared InvoiceFlow palette. */
+.bg-gradient-to-br {
+  background-image: none !important;
+  background-color: var(--color-background) !important;
+}
+
+.bg-white {
+  background-color: var(--color-card) !important;
+}
+
+.bg-blue-50,
+.bg-indigo-50,
+.bg-purple-50 {
+  background-color: var(--color-primary-soft) !important;
+}
+
+.bg-blue-100,
+.bg-indigo-100,
+.bg-gray-100,
+.bg-gray-200 {
+  background-color: var(--color-muted) !important;
+}
+
+.bg-yellow-50,
+.bg-yellow-100,
+.bg-orange-50,
+.bg-orange-100 {
+  background-color: color-mix(in oklab, var(--color-warning) 14%, var(--color-card)) !important;
+}
+
+.bg-red-50,
+.bg-red-100 {
+  background-color: color-mix(in oklab, var(--color-destructive) 10%, var(--color-card)) !important;
+}
+
+.bg-green-50,
+.bg-green-100 {
+  background-color: color-mix(in oklab, var(--color-accent) 16%, var(--color-card)) !important;
+}
+
+.bg-indigo-600,
+.bg-indigo-700,
+.bg-blue-600,
+.bg-blue-700,
+.bg-purple-600,
+.bg-purple-700,
+.bg-green-600,
+.bg-green-700 {
+  background-color: var(--color-primary) !important;
+}
+
+.text-gray-500,
+.text-gray-600,
+.text-gray-700,
+.text-gray-800,
+.text-gray-900,
+.text-slate-400,
+.text-slate-500,
+.text-slate-600,
+.text-slate-700,
+.text-slate-800,
+.text-slate-900 {
+  color: var(--color-foreground) !important;
+}
+
+.text-indigo-600,
+.text-indigo-700,
+.text-indigo-800,
+.text-blue-600,
+.text-blue-700,
+.text-purple-600,
+.text-purple-700,
+.text-green-600,
+.text-green-700 {
+  color: var(--color-primary-deep) !important;
+}
+
+.text-red-700,
+.text-red-800 {
+  color: var(--color-destructive) !important;
+}
+
+.border-gray-200,
+.border-gray-300,
+.border-blue-200,
+.border-indigo-200,
+.border-red-200,
+.border-yellow-200,
+.border-green-200 {
+  border-color: var(--color-border) !important;
+}
+
 button:hover, a:hover {
   transition-duration: 180ms;
 }

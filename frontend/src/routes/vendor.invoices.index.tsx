@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { requireRole } from '@/lib/route-guards'
 import { useEffect, useState } from 'react'
+const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 
 export const Route = createFileRoute('/vendor/invoices/')({
+  beforeLoad: () => requireRole(['VENDOR']),
   component: VendorInvoicesList,
 })
 
@@ -12,6 +15,7 @@ interface Invoice {
   status: string
   createdAt: string
   organizationId: string
+  organizationName?: string
 }
 
 type InvoiceStatus = 'SUBMITTED' | 'OCR_PROCESSING' | 'OCR_COMPLETED' | 'PROCUREMENT_REVIEW' | 'APPROVED' | 'REJECTED' | 'ON_HOLD'
@@ -32,7 +36,7 @@ export function VendorInvoicesList() {
     setError(null)
     try {
       const token = localStorage.getItem('token')
-      let url = '/api/v1/invoices'
+      let url = `${API_BASE}/vendor/invoices`
       if (statusFilter !== 'ALL') {
         url += `?status=${statusFilter}`
       }
@@ -45,8 +49,22 @@ export function VendorInvoicesList() {
 
       if (!response.ok) throw new Error('Failed to fetch invoices')
 
-      const data = await response.json()
-      setInvoices(data.invoices || [])
+      const json = await response.json()
+      const invList = json.data?.invoices || json.invoices || []
+      setInvoices(invList.map((invoice: any) => {
+        const organization = invoice.organizationId
+        const organizationId = typeof organization === 'string'
+          ? organization
+          : String(organization?._id || organization?.id || '')
+        return {
+          ...invoice,
+          _id: String(invoice._id || invoice.id || ''),
+          organizationId,
+          organizationName: typeof organization === 'object' ? organization?.name : undefined,
+          createdAt: invoice.createdAt || invoice.submittedAt || new Date().toISOString(),
+          status: invoice.status || invoice.documentStatus || 'SUBMITTED',
+        }
+      }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -166,7 +184,7 @@ export function VendorInvoicesList() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-gray-800">
-                      {invoice.invoiceNumber || `Invoice ${invoice._id.substring(0, 8)}`}
+                          {invoice.invoiceNumber || `Invoice ${invoice._id.slice(0, 8)}`}
                     </h3>
                     <div className="mt-2 grid grid-cols-3 gap-4 text-sm text-gray-600">
                       <div>
@@ -184,7 +202,7 @@ export function VendorInvoicesList() {
                       <div>
                         <p className="text-xs text-gray-500">Organization</p>
                         <p className="font-semibold text-gray-800">
-                          {invoice.organizationId.substring(0, 8)}...
+                          {invoice.organizationName || (invoice.organizationId ? `${invoice.organizationId.slice(0, 8)}...` : 'Organization')}
                         </p>
                       </div>
                     </div>

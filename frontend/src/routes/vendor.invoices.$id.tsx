@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
+import { requireRole } from '@/lib/route-guards'
+const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 import { useEffect, useState } from 'react'
 
 export const Route = createFileRoute('/vendor/invoices/$id')({
+  beforeLoad: () => requireRole(['VENDOR']),
   component: VendorInvoiceDetails,
 })
 
@@ -60,7 +63,7 @@ export function VendorInvoiceDetails() {
     setError(null)
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`/api/v1/invoices/${id}`, {
+      const response = await fetch(`${API_BASE}/vendor/invoices/${id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -68,8 +71,8 @@ export function VendorInvoiceDetails() {
 
       if (!response.ok) throw new Error('Failed to fetch invoice details')
 
-      const data = await response.json()
-      setInvoice(data.invoice)
+      const json = await response.json()
+      setInvoice(json.data?.invoice || json.invoice)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {

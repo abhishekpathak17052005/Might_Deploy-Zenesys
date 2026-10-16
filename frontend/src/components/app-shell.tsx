@@ -29,13 +29,31 @@ export function AppShell({
   actions,
   children,
 }: {
-  role: "Procurement" | "Finance";
+  role: "Procurement" | "Finance" | "Vendor";
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const roleRailItems =
+    role === "Procurement"
+      ? [
+          { to: "/procurement/dashboard", icon: Grid2x2, label: "Dashboard" },
+          { to: "/procurement/invoices", icon: FileText, label: "Invoices" },
+          { to: "/procurement/invoices/new", icon: Upload, label: "Upload Bill" },
+        ]
+      : role === "Finance"
+        ? [
+            { to: "/finance/dashboard", icon: Grid2x2, label: "Dashboard" },
+            { to: "/finance/review", icon: Inbox, label: "Review Queue" },
+          ]
+        : [
+            { to: "/vendor/dashboard", icon: Grid2x2, label: "Dashboard" },
+            { to: "/vendor/invoices", icon: FileText, label: "Invoices" },
+            { to: "/vendor/invoice/new", icon: Upload, label: "Submit Invoice" },
+            { to: "/vendor/org-search", icon: Search, label: "Organizations" },
+          ];
 
   const nav =
     role === "Procurement"
@@ -43,14 +61,18 @@ export function AppShell({
           { to: "/procurement/dashboard", label: "Dashboard" },
           { to: "/procurement/invoices", label: "Invoices" },
           { to: "/procurement/invoices/new", label: "Upload Bill" },
-          { to: "/finance/dashboard", label: "Finance" },
         ]
-      : [
+      : role === "Finance"
+        ? [
           { to: "/finance/dashboard", label: "Dashboard" },
           { to: "/finance/review", label: "Review" },
-          { to: "/procurement/invoices", label: "Invoices" },
-          { to: "/procurement/dashboard", label: "Procurement" },
-        ];
+          ]
+        : [
+            { to: "/vendor/dashboard", label: "Dashboard" },
+            { to: "/vendor/invoices", label: "Invoices" },
+            { to: "/vendor/invoice/new", label: "Submit Invoice" },
+            { to: "/vendor/org-search", label: "Organizations" },
+          ];
 
   return (
     <div className="min-h-screen bg-background p-3 md:p-4">
@@ -92,10 +114,14 @@ export function AppShell({
             </button>
             <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-2.5">
               <span className="grid size-7 place-items-center rounded-full bg-primary-deep text-[11px] font-bold text-primary-foreground">
-                {role === "Finance" ? "FM" : "PO"}
+                {role === "Finance" ? "FM" : role === "Vendor" ? "VE" : "PO"}
               </span>
               <span className="hidden text-xs font-semibold sm:block">
-                {role === "Finance" ? "Finance Manager" : "Procurement Officer"}
+                {role === "Finance"
+                  ? "Finance Manager"
+                  : role === "Vendor"
+                    ? "Vendor"
+                    : "Procurement Officer"}
               </span>
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </div>
@@ -105,7 +131,7 @@ export function AppShell({
         <div className="flex gap-4 page-enter">
           <aside className="hidden w-14 shrink-0 flex-col items-center justify-between rounded-3xl bg-card py-4 shadow-card md:flex">
             <div className="flex flex-col items-center gap-2">
-              {railItems.map((item) => {
+              {roleRailItems.map((item) => {
                 const active = pathname.startsWith(item.to);
                 const Icon = item.icon;
                 return (

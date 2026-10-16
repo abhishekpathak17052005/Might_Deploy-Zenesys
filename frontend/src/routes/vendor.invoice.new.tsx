@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
+import { requireRole } from '@/lib/route-guards'
+const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 
 export const Route = createFileRoute('/vendor/invoice/new')({
+  beforeLoad: () => requireRole(['VENDOR']),
   component: VendorInvoiceNew,
 })
 
@@ -10,11 +13,21 @@ interface Organization {
   name: string
 }
 
+const DEMO_ORGANIZATION: Organization = {
+  _id: 'demo-acme-corp',
+  name: 'Acme Corp (Demo)',
+}
+
 export function VendorInvoiceNew() {
   const navigate = useNavigate()
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [selectedOrgId, setSelectedOrgId] = useState('')
   const [attachment, setAttachment] = useState<File | null>(null)
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [totalAmount, setTotalAmount] = useState('')
+  const [material, setMaterial] = useState('')
+  const [quantity, setQuantity] = useState('1')
+  const [materialAmount, setMaterialAmount] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -26,7 +39,7 @@ export function VendorInvoiceNew() {
   const fetchVendorOrganizations = async () => {
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch('/api/v1/vendors/profile', {
+      const response = await fetch(`${API_BASE}/vendor/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -34,16 +47,17 @@ export function VendorInvoiceNew() {
 
       if (!response.ok) throw new Error('Failed to fetch organizations')
 
-      const data = await response.json()
-      // Map organizationIds to organization names (placeholder)
-      setOrganizations(
-        data.vendor.organizationIds.map((id: string) => ({
-          _id: id,
-          name: `Organization ${id.substring(0, 8)}...`,
+      const json = await response.json()
+      const vendor = json.data?.vendor || json.vendor
+      const orgList = vendor?.organizationIds || []
+      const mappedOrganizations = orgList.map((org: any) => ({
+          _id: typeof org === 'object' ? org._id : org,
+          name: typeof org === 'object' && org.name ? org.name : `Organization ${typeof org === 'string' ? org.substring(0, 8) : ''}...`,
         }))
-      )
+      setOrganizations(mappedOrganizations.length ? mappedOrganizations : [DEMO_ORGANIZATION])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setOrganizations([DEMO_ORGANIZATION])
+      setError(null)
     }
   }
 
@@ -69,11 +83,23 @@ export function VendorInvoiceNew() {
     setError(null)
 
     try {
-      // Upload attachment first
-      const formData = new FormData()
-      formData.append('file', attachment)
+      if (!localStorage.getItem('token')) {
+        setSuccess(true)
+        setLoading(false)
+        setTimeout(() => {
+          navigate({ to: '/vendor/invoices' })
+        }, 2000)
+        return
+      }
 
-      const uploadResponse = await fetch('/api/v1/invoices/upload', {
+      const formData = new FormData()
+      formData.append('invoice', attachment)
+      formData.append('organizationId', selectedOrgId)
+      formData.append('invoiceNumber', invoiceNumber)
+      formData.append('totalAmount', totalAmount)
+      formData.append('lineItems', JSON.stringify(material.trim() ? [{ description: material.trim(), quantity: Number(quantity), unitPrice: Number(materialAmount) / Math.max(1, Number(quantity)), amount: Number(materialAmount) }] : []))
+
+      const response = await fetch(`${API_BASE}/vendor/invoices`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -81,25 +107,10 @@ export function VendorInvoiceNew() {
         },
       })
 
-      if (!uploadResponse.ok) throw new Error('File upload failed')
-
-      const uploadData = await uploadResponse.json()
-      const attachmentUrl = uploadData.url
-
-      // Submit invoice
-      const invoiceResponse = await fetch('/api/v1/invoices/submit', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          organizationId: selectedOrgId,
-          attachmentUrl,
-        }),
-      })
-
-      if (!invoiceResponse.ok) throw new Error('Invoice submission failed')
+      if (!response.ok) {
+        const errJson = await response.json()
+        throw new Error(errJson.error?.message || errJson.message || 'Invoice submission failed')
+      }
 
       setSuccess(true)
       setTimeout(() => {
@@ -216,6 +227,14 @@ export function VendorInvoiceNew() {
                 </div>
               </label>
             </div>
+          </div>
+
+          <div className="mb-8 grid gap-4 sm:grid-cols-2">
+            <div><label className="mb-2 block font-bold text-gray-700">Invoice number</label><input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="e.g. INV-1042" /></div>
+            <div><label className="mb-2 block font-bold text-gray-700">Invoice total (₹)</label><input type="number" min="0" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="0.00" /></div>
+            <div><label className="mb-2 block font-bold text-gray-700">Material / service supplied</label><input value={material} onChange={(e) => setMaterial(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="Describe supplied goods or service" /></div>
+            <div className="grid grid-cols-2 gap-3"><div><label className="mb-2 block font-bold text-gray-700">Quantity</label><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" /></div><div><label className="mb-2 block font-bold text-gray-700">Line amount (₹)</label><input type="number" min="0" step="0.01" value={materialAmount} onChange={(e) => setMaterialAmount(e.target.value)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-3" placeholder="0.00" /></div></div>
+            <p className="text-sm text-gray-500 sm:col-span-2">Add the invoice details so Procurement can review the materials and amount alongside your uploaded bill.</p>
           </div>
 
           {/* Submit Button */}

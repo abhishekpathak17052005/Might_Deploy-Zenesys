@@ -36,11 +36,11 @@ class Analytics {
     const event: AnalyticsEvent = {
       name,
       category,
-      value,
-      properties,
+      ...(value !== undefined ? { value } : {}),
+      ...(properties !== undefined ? { properties } : {}),
       timestamp: new Date().toISOString(),
       sessionId: this.sessionId,
-      userId
+      ...(userId ? { userId } : {})
     };
 
     this.events.push(event);

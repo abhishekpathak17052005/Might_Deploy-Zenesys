@@ -13,10 +13,12 @@ import {
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, StatCard, StatusChip } from "@/components/kit";
-import { invoices, inr, monthlyVolume, STATUS_LABEL } from "@/lib/mock-data";
-import { apiClient, type InvoiceDocument } from "@/lib/api";
+import { inr, STATUS_LABEL } from "@/lib/mock-data";
+import { apiClient, resolveVendorName, type InvoiceDocument } from "@/lib/api";
+import { requireRole } from "@/lib/route-guards";
 
 export const Route = createFileRoute("/procurement/dashboard")({
+  beforeLoad: () => requireRole(["PROCUREMENT_OFFICER", "ORGANIZATION_ADMIN"]),
   head: () => ({
     meta: [
       { title: "Procurement Dashboard — InvoiceFlow" },
@@ -39,6 +41,7 @@ function ProcurementDashboard() {
   const [dashboardInvoices, setDashboardInvoices] = useState<InvoiceDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actingInvoiceId, setActingInvoiceId] = useState<string | null>(null);
   const [stats, setStats] = useState({
     submitted: 0,
     processing: 0,
@@ -46,8 +49,7 @@ function ProcurementDashboard() {
     approved: 0,
   });
 
-  useEffect(() => {
-    const loadDashboard = async () => {
+  const loadDashboard = async () => {
       try {
         setLoading(true);
         const token = localStorage.getItem("token");
@@ -55,14 +57,25 @@ function ProcurementDashboard() {
         setUserEmail(email || "Officer");
 
         if (!token) {
-          setError("No authentication token");
+          setDashboardInvoices([]);
+          setStats({ submitted: 0, processing: 0, reviewed: 0, approved: 0 });
+          setError(null);
           return;
         }
 
         // Fetch invoices from backend
-        const result = await apiClient.listInvoices(token);
+        const result = await apiClient.listProcurementPending(token);
         if (result.success && result.data) {
-          const fetchedInvoices = result.data.documents;
+          const fetchedInvoices = result.data.invoices.map((invoice: any) => ({
+            ...invoice,
+            id: invoice.id || invoice._id,
+            invoiceNumber: invoice.invoiceNumber || `Invoice ${(invoice.id || invoice._id).slice(0, 8)}`,
+            vendorName: resolveVendorName(invoice),
+            documentStatus: invoice.status,
+            invoiceDate: invoice.invoiceDate || invoice.createdAt,
+            submittedAt: invoice.createdAt,
+            totalAmount: invoice.totalAmount || 0,
+          }));
           setDashboardInvoices(fetchedInvoices);
 
           // Calculate stats
@@ -79,23 +92,53 @@ function ProcurementDashboard() {
           setError(null);
         } else {
           setError(result.error?.message || "Failed to fetch invoices");
-          // Fall back to mock data
-          setDashboardInvoices(invoices.slice(0, 10));
+          setDashboardInvoices([]);
         }
       } catch (err) {
         console.error("Failed to load procurement dashboard", err);
-        // Fall back to mock data
-        setDashboardInvoices(invoices.slice(0, 10));
+        setDashboardInvoices([]);
       } finally {
         setLoading(false);
       }
-    };
+  };
 
+  useEffect(() => {
     loadDashboard();
   }, []);
 
+  const handleProcurementAction = async (invoiceId: string, action: "verify" | "return") => {
+    const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || "";
+    if (!token) {
+      setError("Select an authenticated Procurement workspace to review invoices.");
+      return;
+    }
+
+    const reason = action === "return" ? window.prompt("Reason for returning this invoice to the vendor:")?.trim() : "";
+    if (action === "return" && !reason) return;
+
+    setActingInvoiceId(invoiceId);
+    setError(null);
+    try {
+      const result = action === "verify"
+        ? await apiClient.verifyProcurementInvoice(invoiceId, token)
+        : await apiClient.returnProcurementInvoice(invoiceId, token, reason!);
+      if (!result.success) throw new Error(result.error?.message || "Workflow transition failed");
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Workflow transition failed");
+    } finally {
+      setActingInvoiceId(null);
+    }
+  };
+
   const recent = dashboardInvoices.slice(0, 4);
-  const max = Math.max(...monthlyVolume.map((m) => m.a));
+  const monthlyVolume = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date(); date.setMonth(date.getMonth() - (5 - i));
+    const label = date.toLocaleString("en", { month: "short" });
+    const count = dashboardInvoices.filter((inv) => new Date(inv.submittedAt).getMonth() === date.getMonth() && new Date(inv.submittedAt).getFullYear() === date.getFullYear()).length;
+    return { label, a: count };
+  });
+  const max = Math.max(1, ...monthlyVolume.map((m) => m.a));
   const totalValue = recent.reduce((sum, inv) => sum + inv.totalAmount, 0);
 
   return (
@@ -123,7 +166,7 @@ function ProcurementDashboard() {
         <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-700">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" />
-            <span>{error} (using mock data)</span>
+            <span>{error}</span>
           </div>
         </div>
       )}
@@ -258,6 +301,7 @@ function ProcurementDashboard() {
                     <th className="pb-3">PO</th>
                     <th className="pb-3">Status</th>
                     <th className="pb-3 text-right">Amount</th>
+                    <th className="pb-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,20 +309,45 @@ function ProcurementDashboard() {
                     <tr key={inv.id} className="border-t border-border">
                       <td className="py-3">
                         <Link
-                          to="/procurement/invoices/$id"
-                          params={{ id: inv.id }}
+                          to={"/procurement/invoices/$id" as any}
+                          params={{ id: inv.id } as any}
                           className="text-sm font-bold hover:text-primary"
                         >
-                          {inv.invoiceNumber}
+                          {inv.invoiceNumber || inv.id?.slice(0, 8) || "Processing"}
                         </Link>
-                        <p className="text-[11px] text-muted-foreground">{new Date(inv.invoiceDate).toLocaleDateString()}</p>
+                        <p className="text-[11px] text-muted-foreground">{inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : "Pending Extraction"}</p>
                       </td>
-                      <td className="py-3 text-sm">{inv.vendorName || inv.vendorId}</td>
+                      <td className="py-3 text-sm">{inv.vendorName || "—"}</td>
                       <td className="py-3 text-sm text-muted-foreground">{inv.poNumber || "N/A"}</td>
                       <td className="py-3">
-                        <StatusChip label={STATUS_LABEL[inv.documentStatus] || inv.documentStatus} />
+                      <StatusChip label={STATUS_LABEL[inv.documentStatus as keyof typeof STATUS_LABEL] || inv.documentStatus} />
                       </td>
                       <td className="py-3 text-right text-sm font-bold">{inr(inv.totalAmount)}</td>
+                      <td className="py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            to={"/procurement/invoices/$id" as any}
+                            params={{ id: inv.id } as any}
+                            className="rounded-full border border-border px-3 py-1.5 text-[11px] font-bold"
+                          >
+                            Review
+                          </Link>
+                          <button
+                            onClick={() => handleProcurementAction(inv.id, "verify")}
+                            disabled={actingInvoiceId === inv.id}
+                            className="rounded-full bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground disabled:opacity-50"
+                          >
+                            Verify & Forward
+                          </button>
+                          <button
+                            onClick={() => handleProcurementAction(inv.id, "return")}
+                            disabled={actingInvoiceId === inv.id}
+                            className="rounded-full border border-destructive/40 px-3 py-1.5 text-[11px] font-bold text-destructive disabled:opacity-50"
+                          >
+                            Return
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

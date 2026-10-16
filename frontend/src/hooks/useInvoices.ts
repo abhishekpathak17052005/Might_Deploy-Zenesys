@@ -16,7 +16,7 @@ export function useInvoices(options?: UseInvoicesOptions) {
     const fetchInvoices = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem("firebaseToken");
+        const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token");
         if (!token) {
           setError("No authentication token");
           return;
@@ -24,7 +24,7 @@ export function useInvoices(options?: UseInvoicesOptions) {
 
         const result = await apiClient.listInvoices(token);
         if (result.success && result.data) {
-          setInvoices(result.data.documents);
+          setInvoices(result.data.documents ?? result.data.invoices ?? []);
           setError(null);
         } else {
           setError(result.error?.message || "Failed to fetch invoices");
@@ -57,7 +57,7 @@ export function useInvoiceDetail(invoiceId: string | null) {
     const fetchInvoice = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem("firebaseToken");
+        const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token");
         if (!token) {
           setError("No authentication token");
           return;
@@ -92,7 +92,7 @@ export function useReviewQueue() {
     const fetchQueue = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem("firebaseToken");
+        const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token");
         if (!token) {
           setError("No authentication token");
           return;

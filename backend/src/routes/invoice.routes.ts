@@ -134,6 +134,22 @@ invoiceRouter.get(
   }
 );
 
+// GET /api/invoices/:id/procurement-review - invoice materials and vendor payable balance
+invoiceRouter.get(
+  "/:id/procurement-review",
+  verifyJWTToken,
+  requireRole("PROCUREMENT_OFFICER", "ORGANIZATION_ADMIN"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return sendError(res, "UNAUTHORIZED", "User not found", 401);
+      const review = await invoiceService.getProcurementReview(req.params.id, req.user.uid);
+      return sendSuccess(res, review);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 /**
  * GET /api/invoices/:id
  * Get invoice by ID (org-scoped)

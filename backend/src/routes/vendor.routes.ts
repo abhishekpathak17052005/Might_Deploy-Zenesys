@@ -85,6 +85,17 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { organizationId } = req.body;
+      let lineItems = [];
+      if (typeof req.body.lineItems === "string") {
+        try { lineItems = JSON.parse(req.body.lineItems); } catch { return sendError(res, "VALIDATION_ERROR", "Invoice items are invalid", 400); }
+      }
+      if (!Array.isArray(lineItems) || lineItems.some((item: any) => !item?.description || Number(item.quantity) <= 0 || Number(item.amount) < 0)) {
+        return sendError(res, "VALIDATION_ERROR", "Invoice items must include a description, positive quantity, and amount", 400);
+      }
+      const totalAmount = req.body.totalAmount === undefined || req.body.totalAmount === "" ? undefined : Number(req.body.totalAmount);
+      if (totalAmount !== undefined && (!Number.isFinite(totalAmount) || totalAmount < 0)) {
+        return sendError(res, "VALIDATION_ERROR", "Invoice amount must be a valid non-negative number", 400);
+      }
 
       if (!organizationId) {
         return sendError(res, "VALIDATION_ERROR", "Organization ID is required", 400);
@@ -145,7 +156,8 @@ router.post(
         organizationId,
         req.file.originalname,
         req.file.buffer,
-        req.file.mimetype
+        req.file.mimetype,
+        { invoiceNumber: req.body.invoiceNumber || undefined, totalAmount, lineItems }
       );
 
       return sendSuccess(res, { invoice }, 201);

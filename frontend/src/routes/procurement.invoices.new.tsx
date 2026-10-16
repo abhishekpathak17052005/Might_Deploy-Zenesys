@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { CheckCircle2, CloudUpload, FileUp } from "lucide-react";
+import { CheckCircle2, CloudUpload, FileUp, Loader2, Play } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead } from "@/components/kit";
-import { purchaseOrders, vendors } from "@/lib/mock-data";
+import { requireRole } from "@/lib/route-guards";
+import { apiClient } from "@/lib/api";
 
 export const Route = createFileRoute("/procurement/invoices/new")({
+  beforeLoad: () => requireRole(["PROCUREMENT_OFFICER", "ORGANIZATION_ADMIN"]),
   head: () => ({
     meta: [
       { title: "Submit Vendor Bill — InvoiceFlow" },
@@ -25,8 +27,86 @@ export const Route = createFileRoute("/procurement/invoices/new")({
 
 function UploadBill() {
   const [submitted, setSubmitted] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedVendor, setSelectedVendor] = useState("");
+  const [selectedPO, setSelectedPO] = useState("");
   const [type, setType] = useState<"PO" | "NON_PO">("PO");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadedInvoiceId, setUploadedInvoiceId] = useState<string | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [processingLoading, setProcessingLoading] = useState(false);
+  const [processResult, setProcessResult] = useState<any | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      setError("Please select an invoice document (PDF, PNG, JPG) to upload");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || ""
+        : "";
+
+    try {
+      const res = await apiClient.uploadInvoice(
+        selectedFile,
+        token,
+        type === "PO" ? "PO_BASED" : "NON_PO",
+        selectedVendor
+      );
+
+      if (res.success && res.data) {
+        setUploadedInvoiceId(res.data.id);
+        setPipelineStatus(res.data.documentStatus);
+        setSubmitted(true);
+      } else {
+        setError(res.error?.message || "Upload failed. Please verify your credentials and file format.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect to backend server");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRunProcessing = async () => {
+    if (!uploadedInvoiceId) return;
+    setProcessingLoading(true);
+    setError(null);
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || ""
+        : "";
+
+    try {
+      // Step 1: Extract
+      const extractRes = await apiClient.extractInvoice(uploadedInvoiceId, token);
+      if (!extractRes.success) {
+        setError(extractRes.error?.message || "Extraction failed");
+        setProcessingLoading(false);
+        return;
+      }
+
+      // Step 2: Process & verify
+      const processRes = await apiClient.processInvoice(uploadedInvoiceId, token);
+      if (processRes.success) {
+        setPipelineStatus("RISK_EVALUATED");
+        setProcessResult(processRes.data);
+      } else {
+        setError(processRes.error?.message || "Processing failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Processing error");
+    } finally {
+      setProcessingLoading(false);
+    }
+  };
 
   return (
     <AppShell
@@ -42,32 +122,33 @@ function UploadBill() {
             sub="Vendor, purchase order and document"
           />
 
-          <form
-            className="flex flex-col gap-5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSubmitted(true);
-            }}
-          >
+          <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+            {error && (
+              <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-xs font-semibold text-destructive">
+                {error}
+              </div>
+            )}
+
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-muted-foreground">Vendor</span>
-              <select className="rounded-2xl border border-input bg-card px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-ring">
-                {vendors.map((v) => (
-                  <option key={v}>{v}</option>
-                ))}
-              </select>
+              <span className="text-xs font-semibold text-muted-foreground">Vendor ID</span>
+              <input
+                required
+                placeholder="Enter the registered vendor ID"
+                value={selectedVendor}
+                onChange={(e) => setSelectedVendor(e.target.value)}
+                className="rounded-2xl border border-input bg-card px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-ring"
+              />
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-muted-foreground">Purchase Order</span>
-              <select
+              <span className="text-xs font-semibold text-muted-foreground">Purchase Order Number</span>
+              <input
+                placeholder={type === "NON_PO" ? "Not required for non-PO invoices" : "Enter the PO number"}
+                value={selectedPO}
+                onChange={(e) => setSelectedPO(e.target.value)}
                 disabled={type === "NON_PO"}
                 className="rounded-2xl border border-input bg-card px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-              >
-                {purchaseOrders.map((p) => (
-                  <option key={p}>{p}</option>
-                ))}
-              </select>
+              />
             </label>
 
             <div className="flex flex-col gap-2">
@@ -103,40 +184,71 @@ function UploadBill() {
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-input bg-muted/60 px-6 py-12 text-center transition-colors hover:border-primary">
               <CloudUpload className="size-8 text-primary" />
               <span className="text-sm font-bold">
-                {fileName ?? "Drop invoice here"}
+                {selectedFile ? selectedFile.name : "Drop invoice here or browse"}
               </span>
-              <span className="text-xs text-muted-foreground">PDF / JPG / PNG</span>
+              <span className="text-xs text-muted-foreground">PDF / JPG / PNG (Max 10MB)</span>
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff"
                 className="hidden"
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setSelectedFile(file);
+                  if (file) setError(null);
+                }}
               />
             </label>
 
             <button
               type="submit"
-              className="rounded-full bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              Submit Bill
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              {loading ? "Uploading to Server..." : "Submit Bill"}
             </button>
           </form>
         </Card>
 
         <div className="flex flex-col gap-5">
-          {submitted ? (
+          {submitted && uploadedInvoiceId ? (
             <Card className="bg-primary-deep text-primary-foreground">
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="size-5" />
-                <p className="text-sm font-bold">Bill submitted successfully.</p>
+                <p className="text-sm font-bold">Bill submitted to server successfully.</p>
               </div>
-              <p className="mt-6 text-xs text-white/60">Invoice ID</p>
-              <p className="text-3xl font-extrabold tracking-tight">INV-1024</p>
-              <p className="mt-5 text-xs text-white/60">Status</p>
+              <p className="mt-6 text-xs text-white/60">Persistent Invoice ID</p>
+              <p className="text-xl font-extrabold tracking-tight break-all font-mono">{uploadedInvoiceId}</p>
+              <p className="mt-4 text-xs text-white/60">Pipeline Status</p>
               <p className="mt-1 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold">
                 <span className="size-2 rounded-full bg-accent" />
-                Extraction Pending
+                {pipelineStatus || "SUBMITTED"}
               </p>
+
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={handleRunProcessing}
+                  disabled={processingLoading}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-xs font-bold text-primary-deep transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {processingLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Play className="size-4" />
+                  )}
+                  {processingLoading ? "Running Extraction & Verification..." : "Run Pipeline Verification"}
+                </button>
+              </div>
+
+              {processResult && (
+                <div className="mt-4 rounded-xl bg-black/20 p-3 text-xs">
+                  <p className="font-bold">Risk Assessment:</p>
+                  <p>Score: {processResult.risk?.score} ({processResult.risk?.level})</p>
+                  <p>Category: {processResult.categorization?.category}</p>
+                  <p>Decision: {processResult.risk?.decision}</p>
+                </div>
+              )}
             </Card>
           ) : null}
 
@@ -144,13 +256,13 @@ function UploadBill() {
             <CardHead title="What happens next" sub="Deterministic backend pipeline" />
             <ol className="flex flex-col gap-3">
               {[
-                "Document intake",
-                "Extraction",
-                "Categorization",
+                "Document intake (MongoDB)",
+                "Extraction (Deterministic OCR)",
+                "Categorization & GL mapping",
                 "GST / Vendor / PO checks",
-                "Risk engine",
+                "Anomaly & Risk assessment",
                 "Related invoice analysis",
-                "Finance review",
+                "Finance review queue",
               ].map((step, i) => (
                 <li key={step} className="flex items-center gap-3">
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-bold">

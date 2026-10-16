@@ -149,6 +149,25 @@ export class InvoiceService {
     return null;
   }
 
+  async getProcurementReview(invoiceId: string, requestingUserId: string): Promise<any> {
+    const invoice = await this.getInvoiceById(invoiceId, requestingUserId);
+    if (!invoice) throw notFound("Invoice not found");
+    const { User } = await import("../models/User");
+    const user = await User.findById(requestingUserId);
+    if (!user?.organizationId || user.organizationId.toString() !== invoice.organizationId.toString()) {
+      throw forbidden("You do not have access to this invoice");
+    }
+
+    // The app has no payment ledger yet, so approved invoices are the payable balance on record.
+    const outstandingInvoices = await Invoice.find({
+      organizationId: invoice.organizationId,
+      vendorId: invoice.vendorId?._id || invoice.vendorId,
+      status: "APPROVED",
+    }).select("invoiceNumber totalAmount createdAt dueDate").sort({ createdAt: -1 }).lean();
+    const outstandingAmount = outstandingInvoices.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+    return { invoice, outstandingAmount, outstandingInvoices };
+  }
+
   async updateInvoiceStatus(invoiceId: string, newStatus: "APPROVED" | "REJECTED" | "ON_HOLD", approverId: string, rejectionReason?: string): Promise<IInvoice | null> {
     const allowedFromStatuses = ["OCR_PROCESSING", "OCR_COMPLETED", "PROCUREMENT_REVIEW", "ON_HOLD", "SUBMITTED"];
     const update: Record<string, unknown> = { status: newStatus, approvedBy: new Types.ObjectId(approverId) };
@@ -255,7 +274,8 @@ export class InvoiceService {
     organizationId: string,
     attachmentUrl?: string,
     attachmentData?: Buffer,
-    attachmentMimeType?: string
+    attachmentMimeType?: string,
+    details?: { invoiceNumber?: string; totalAmount?: number; lineItems?: Array<{ description: string; quantity: number; unitPrice: number; amount: number }> }
   ): Promise<IInvoice> {
     const vendor = await Vendor.findOne({ userId });
     if (!vendor) {
@@ -275,10 +295,12 @@ export class InvoiceService {
       vendorName: vendor.name,
       uploadedBy: new Types.ObjectId(userId),
       status: "SUBMITTED",
+      invoiceNumber: details?.invoiceNumber,
+      totalAmount: details?.totalAmount,
+      lineItems: details?.lineItems || [],
       attachmentUrl,
       attachmentData,
       attachmentMimeType,
-      lineItems: [],
     });
 
     await invoice.save();

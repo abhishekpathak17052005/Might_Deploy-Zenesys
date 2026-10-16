@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { apiClient } from "@/lib/api";
 
 export interface AuthUser {
   uid: string;
   email: string | null;
-  role: "PROCUREMENT" | "FINANCE_MANAGER" | "ADMIN";
+  role: "PROCUREMENT_OFFICER" | "FINANCE_MANAGER" | "ORGANIZATION_ADMIN" | "VENDOR";
 }
 
 export function useAuth() {
@@ -15,23 +16,12 @@ export function useAuth() {
     try {
       // Check if JWT token exists
       const token = localStorage.getItem("token");
-      const userEmail = localStorage.getItem("userEmail");
-      const userId = localStorage.getItem("userId");
-
-      if (token && userEmail && userId) {
-        // Determine role from email
-        const role = userEmail.includes("finance")
-          ? "FINANCE_MANAGER"
-          : "PROCUREMENT";
-
-        setUser({
-          uid: userId,
-          email: userEmail,
-          role: role as AuthUser["role"]
-        });
-      } else {
-        setUser(null);
-      }
+      if (!token) { setUser(null); return; }
+      void apiClient.getCurrentUser(token).then((result) => {
+        const current = (result.data as any)?.user;
+        if (!result.success || !current) { setUser(null); return; }
+        setUser({ uid: current._id || current.id, email: current.email, role: current.role });
+      }).catch((err) => setError(err instanceof Error ? err.message : "Auth error"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Auth error");
     } finally {
@@ -45,6 +35,8 @@ export function useAuth() {
       localStorage.removeItem("token");
       localStorage.removeItem("userEmail");
       localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("invoiceflow_token");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Logout failed");
     }

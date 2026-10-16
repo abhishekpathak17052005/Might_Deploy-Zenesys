@@ -26,4 +26,9 @@ dist-ssr/
 *.log
 .vscode/
 .idea/
+.tanstack/
 .tanstack/tmp/
+**/.tanstack/
+.vite-cache/
+frontend/.vite-cache/
+backend/dist/

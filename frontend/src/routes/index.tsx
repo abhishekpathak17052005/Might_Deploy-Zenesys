@@ -1,6 +1,35 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ShieldCheck, Wallet, Boxes, Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowRight, ShieldCheck, Wallet, Boxes, Store, Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
 import { useState } from "react";
+
+type Role = "procurement" | "finance" | "vendor";
+const API_BASE = import.meta.env["VITE_API_URL"] || "http://localhost:5000/api";
+
+async function loginAndNavigate(role: Role, setLoading: (value: boolean) => void, setError: (value: string) => void) {
+  const account = role === "finance"
+    ? { email: "finance@demo.com", password: "Demo@12345" }
+    : role === "vendor"
+      ? { email: "vendor@demo.com", password: "Demo@12345" }
+      : { email: "procurement@demo.com", password: "Demo@12345" };
+  setLoading(true); setError("");
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(account) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || "Login failed");
+    const user = result.data.user || {};
+    localStorage.setItem("token", result.data.token);
+    localStorage.setItem("invoiceflow_token", result.data.token);
+    localStorage.setItem("userEmail", user.email || account.email);
+    localStorage.setItem("userId", result.data.userId || user._id || user.id || "");
+    localStorage.setItem("userRole", user.role || "");
+    localStorage.setItem("invoiceflow_role", role);
+    window.location.assign(user.role === "FINANCE_MANAGER" || user.role === "ORGANIZATION_ADMIN" ? "/finance/dashboard" : user.role === "VENDOR" ? "/vendor/dashboard" : "/procurement/dashboard");
+  } catch (error) { setError(error instanceof Error ? error.message : "Login failed"); setLoading(false); }
+}
+
+function selectRoleAndNavigate(role: Role) {
+  return role;
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -23,8 +52,14 @@ export const Route = createFileRoute("/")({
 });
 
 function Landing() {
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<"procurement" | "finance" | null>(null);
+  const [loadingRole, setLoadingRole] = useState<Role | null>(null);
+  const [loginError, setLoginError] = useState("");
+
+  const handleRoleClick = async (role: Role) => {
+    setLoadingRole(role);
+    selectRoleAndNavigate(role);
+    await loginAndNavigate(role, (value) => setLoadingRole(value ? role : null), setLoginError);
+  };
 
   return (
     <>
@@ -63,43 +98,37 @@ function Landing() {
             </div>
 
             <RoleCard
-              onClick={() => {
-                setSelectedRole("procurement");
-                setShowAuthModal(true);
-              }}
+              onClick={() => handleRoleClick("procurement")}
+              loading={loadingRole === "procurement"}
               icon={<Boxes className="size-5" />}
               title="Procurement Officer"
               desc="Submit vendor bills and track processing status."
             />
             <RoleCard
-              onClick={() => {
-                setSelectedRole("finance");
-                setShowAuthModal(true);
-              }}
+              onClick={() => handleRoleClick("finance")}
+              loading={loadingRole === "finance"}
               icon={<Wallet className="size-5" />}
               title="Finance Manager"
               desc="Review risk evidence, approve or reject payment."
               highlight
             />
+            <RoleCard
+              onClick={() => handleRoleClick("vendor")}
+              loading={loadingRole === "vendor"}
+              icon={<Store className="size-5" />}
+              title="Vendor"
+              desc="Connect organizations and submit invoices."
+            />
+
+            {loginError && <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-xs text-destructive">{loginError}</p>}
 
             <div className="mt-auto rounded-2xl bg-muted p-4 text-xs text-muted-foreground">
-              Risk scores, GST results, PO matching and categorization are produced by the backend.
-              This interface only visualizes them.
+              Choose a workspace to continue. Each role only has access to its own pages and actions.
             </div>
           </div>
         </div>
       </div>
 
-      {/* Auth Modal */}
-      {showAuthModal && (
-        <AuthModal 
-          role={selectedRole} 
-          onClose={() => {
-            setShowAuthModal(false);
-            setSelectedRole(null);
-          }} 
-        />
-      )}
     </>
   );
 }
@@ -110,17 +139,20 @@ function RoleCard({
   title,
   desc,
   highlight,
+  loading,
 }: {
   onClick: () => void;
   icon: React.ReactNode;
   title: string;
   desc: string;
   highlight?: boolean;
+  loading?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`group flex items-center gap-4 rounded-2xl border p-4 transition-colors text-left ${
+      disabled={loading}
+      className={`group flex items-center gap-4 rounded-2xl border p-4 transition-colors text-left disabled:opacity-70 ${
         highlight
           ? "border-transparent bg-primary text-primary-foreground hover:bg-primary/90"
           : "border-border hover:bg-muted"
@@ -136,16 +168,19 @@ function RoleCard({
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-bold">{title}</span>
         <span className={`block text-xs ${highlight ? "text-white/70" : "text-muted-foreground"}`}>
-          {desc}
+          {loading ? "Signing in…" : desc}
         </span>
       </span>
-      <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+      {loading ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+      )}
     </button>
   );
 }
 
 function AuthModal({ role, onClose }: { role: "procurement" | "finance" | null; onClose: () => void }) {
-  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -167,39 +202,9 @@ function AuthModal({ role, onClose }: { role: "procurement" | "finance" | null; 
 
   const account = role ? demoAccounts[role] : null;
 
-  const handleDemoLogin = async () => {
-    if (!account) return;
-    
-    setError("");
-    setLoading(true);
-
-    try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: account.email, password: account.password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error?.message || "Login failed");
-      }
-
-      localStorage.setItem("token", data.data.token);
-      localStorage.setItem("userEmail", account.email);
-      localStorage.setItem("userId", data.data.userId);
-
-      if (role === "procurement") {
-        navigate({ to: "/procurement/dashboard" });
-      } else {
-        navigate({ to: "/finance/dashboard" });
-      }
-    } catch (err: any) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
-    }
+  const handleDemoLogin = () => {
+    if (!account || !role) return;
+    loginAndNavigate(role, setLoading, setError);
   };
 
   const handleCustomLogin = async (e: React.FormEvent) => {
@@ -208,7 +213,7 @@ function AuthModal({ role, onClose }: { role: "procurement" | "finance" | null; 
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -220,11 +225,14 @@ function AuthModal({ role, onClose }: { role: "procurement" | "finance" | null; 
         throw new Error(data.error?.message || "Login failed");
       }
 
+      const resolvedUserId = data.data?.userId || data.data?.user?._id || data.data?.user?.id || "";
       localStorage.setItem("token", data.data.token);
+      localStorage.setItem("invoiceflow_token", data.data.token);
       localStorage.setItem("userEmail", email);
-      localStorage.setItem("userId", data.data.userId);
-
-      navigate({ to: email.includes("procurement") ? "/procurement/dashboard" : "/finance/dashboard" });
+      localStorage.setItem("userId", resolvedUserId);
+      const actualRole = data.data?.user?.role || "";
+      localStorage.setItem("userRole", actualRole);
+      window.location.assign(actualRole === "FINANCE_MANAGER" || actualRole === "ORGANIZATION_ADMIN" ? "/finance/dashboard" : actualRole === "VENDOR" ? "/vendor/dashboard" : "/procurement/dashboard");
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -348,7 +356,7 @@ function AuthModal({ role, onClose }: { role: "procurement" | "finance" | null; 
 
         {/* Footer */}
         <p className="mt-4 text-center text-xs text-slate-500">
-          Don't have an account? <Link to="/login" className="text-blue-600 hover:underline">Create one here</Link>
+          Don't have an account? <Link to="/" className="text-blue-600 hover:underline">Get started here</Link>
         </p>
       </div>
     </div>

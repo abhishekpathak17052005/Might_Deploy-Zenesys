@@ -5,6 +5,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 export default defineConfig({
   root: "frontend",
+  cacheDir: ".vite-cache",
   plugins: [
     tanstackStart({
       srcDirectory: "src",
@@ -14,5 +15,15 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: { tsconfigPaths: true },
-  server: { host: true, strictPort: false, hmr: { overlay: false } },
+  server: {
+    host: true,
+    strictPort: false,
+    hmr: { overlay: false },
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

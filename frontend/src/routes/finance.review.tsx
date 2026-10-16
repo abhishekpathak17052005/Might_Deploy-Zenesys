@@ -1,10 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Inbox } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Inbox, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead, Dot, RiskPill } from "@/components/kit";
-import { invoices, inr } from "@/lib/mock-data";
+import { inr } from "@/lib/mock-data";
+import { apiClient } from "@/lib/api";
+import { requireRole } from "@/lib/route-guards";
 
 export const Route = createFileRoute("/finance/review")({
+  beforeLoad: () => requireRole(["FINANCE_MANAGER", "ORGANIZATION_ADMIN"]),
   head: () => ({
     meta: [
       { title: "Review Queue — InvoiceFlow" },
@@ -23,21 +27,80 @@ export const Route = createFileRoute("/finance/review")({
 });
 
 function ReviewQueue() {
-  const queue = [...invoices]
-    .filter((i) => i.status === "FINANCE_REVIEW" || i.status === "RISK_EVALUATED")
-    .sort((a, b) => b.risk.score - a.risk.score);
+  const [queue, setQueue] = useState<any[]>([]);
+  const [isLive, setIsLive] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchReviewQueue = async () => {
+    setLoading(true);
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || ""
+        : "";
+    if (token) {
+      try {
+        const res = await apiClient.getFinanceReviewQueue(token);
+        if (res.success && res.data) {
+          const mapped = (res.data.invoices || []).map((inv: any) => ({
+            id: inv._id || inv.id,
+            invoiceNumber: inv.invoiceNumber || inv._id?.slice(0, 8),
+            vendorName: (inv.vendorId as any)?.name || inv.vendorName || "Unknown Vendor",
+            poNumber: inv.poNumber || "Non-PO",
+            category: inv.category || "General",
+            categoryIcon: "📄",
+            attention: inv.riskLevel ? `${inv.riskLevel} risk level` : "Awaiting Review",
+            amount: inv.totalAmount || 0,
+            risk: {
+              score: inv.riskScore || 0,
+              level: (inv.riskLevel as any) || "LOW",
+            },
+          })).sort((a: any, b: any) => b.risk.score - a.risk.score);
+
+          setQueue(mapped);
+          setIsLive(true);
+          setError(null);
+        } else {
+          setQueue([]);
+          setError(res.error?.message || "Failed to load review queue");
+        }
+      } catch (err) {
+        setQueue([]);
+        setError(err instanceof Error ? err.message : "Failed to load review queue");
+      }
+    } else {
+      setQueue([]);
+      setError("Please sign in to view the finance review queue");
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchReviewQueue();
+  }, []);
 
   return (
     <AppShell
       role="Finance"
       title="Review Queue"
       subtitle="GET /api/finance/review"
+      actions={
+        <button
+          onClick={fetchReviewQueue}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-full border border-input bg-card px-3 py-2 text-xs font-semibold hover:bg-muted"
+        >
+          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          Refresh Queue
+        </button>
+      }
     >
       <Card>
+        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <CardHead
           icon={<Inbox className="size-4.5" />}
           title="Awaiting Decision"
-          sub={`${queue.length} invoices`}
+          sub={`${queue.length} invoices ${isLive ? "(Live database queue)" : ""}`}
         />
         <div className="flex flex-col gap-3">
           {queue.map((inv) => (
@@ -63,6 +126,7 @@ function ReviewQueue() {
               </span>
             </Link>
           ))}
+          {!loading && queue.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No invoices awaiting review.</p>}
         </div>
       </Card>
     </AppShell>

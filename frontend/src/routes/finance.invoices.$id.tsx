@@ -1,137 +1,57 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
-import { useState } from "react";
-import { Check, Download, X } from "lucide-react";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Check, Loader2, X } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardHead } from "@/components/kit";
-import {
-  CategoryCard,
-  Evidence,
-  InvoiceHeader,
-  InvoiceInformation,
-  RelatedTransactions,
-  RiskAnalysis,
-  Verification,
-} from "@/components/review-sections";
-import { getInvoice } from "@/lib/mock-data";
+import { CategoryCard, Evidence, InvoiceHeader, InvoiceInformation, RelatedTransactions, RiskAnalysis, Verification } from "@/components/review-sections";
+import type { Invoice } from "@/lib/mock-data";
+import { requireRole } from "@/lib/route-guards";
+import { apiClient } from "@/lib/api";
+import { toInvoiceView } from "@/lib/invoice-adapter";
 
 export const Route = createFileRoute("/finance/invoices/$id")({
-  loader: ({ params }) => {
-    const invoice = getInvoice(params.id);
-    if (!invoice) throw notFound();
-    return { invoice };
-  },
-  head: ({ loaderData }) => {
-    if (!loaderData) {
-      return {
-        meta: [
-          { title: "Review unavailable — InvoiceFlow" },
-          { name: "robots", content: "noindex" },
-        ],
-      };
-    }
-    const t = `Review ${loaderData.invoice.invoiceNumber} — InvoiceFlow`;
-    const d = `Risk ${loaderData.invoice.risk.score}/100 with verification checks, signals and evidence for ${loaderData.invoice.vendorName}.`;
-    return {
-      meta: [
-        { title: t },
-        { name: "description", content: d },
-        { property: "og:title", content: t },
-        { property: "og:description", content: d },
-      ],
-    };
-  },
+  beforeLoad: () => requireRole(["FINANCE_MANAGER", "ORGANIZATION_ADMIN"]),
+  head: () => ({ meta: [{ title: "Finance invoice review — InvoiceFlow" }] }),
   component: FinanceReview,
-  notFoundComponent: () => (
-    <AppShell role="Finance" title="Invoice not found">
-      <Card>
-        <p className="text-sm text-muted-foreground">No review record for that invoice ID.</p>
-      </Card>
-    </AppShell>
-  ),
 });
 
 function FinanceReview() {
-  const { invoice } = Route.useLoaderData();
-  const [decision, setDecision] = useState<"APPROVED" | "REJECTED" | null>(null);
+  const { id } = useParams({ from: "/finance/invoices/$id" });
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [decision, setDecision] = useState<"APPROVED" | "REJECTED" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || "";
+    apiClient.getInvoiceReviewPacket(id, token).then((result) => {
+      if (result.success && result.data) setInvoice(toInvoiceView(result.data.invoice));
+      else setLoadError(result.error?.message || "Invoice review could not be loaded");
+    }).catch((err) => setLoadError(err instanceof Error ? err.message : "Invoice review could not be loaded"));
+  }, [id]);
 
-  return (
-    <AppShell
-      role="Finance"
-      title="Finance Review"
-      subtitle={`${invoice.invoiceNumber} · ${invoice.vendorName}`}
-      actions={
-        <button className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-xs font-semibold shadow-card">
-          <Download className="size-4 text-muted-foreground" />
-          Download Invoice
-        </button>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        <InvoiceHeader invoice={invoice} />
+  const decide = async (next: "APPROVED" | "REJECTED") => {
+    setSubmitting(true); setMessage(null);
+    const token = localStorage.getItem("token") || localStorage.getItem("invoiceflow_token") || "";
+    const result = next === "APPROVED"
+      ? await apiClient.approveInvoice(id, token, note || "Approved by finance")
+      : await apiClient.rejectInvoice(id, token, note || "Rejected by finance");
+    if (result.success) { setDecision(next); setMessage(`Invoice ${next.toLowerCase()} and recorded.`); }
+    else setMessage(result.error?.message || "Could not record decision");
+    setSubmitting(false);
+  };
 
-        <div className="grid gap-5 lg:grid-cols-3">
-          <InvoiceInformation invoice={invoice} />
-          <Verification invoice={invoice} />
-          <CategoryCard invoice={invoice} />
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
-          <RiskAnalysis invoice={invoice} />
-          <RelatedTransactions invoice={invoice} />
-        </div>
-
-        <Evidence invoice={invoice} />
-
-        <Card>
-          <CardHead title="Finance Decision" sub="POST /api/invoices/:documentId/approve · /reject" />
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setDecision("APPROVED")}
-              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl px-6 py-4 text-sm font-bold transition-colors ${
-                decision === "APPROVED"
-                  ? "bg-primary-deep text-primary-foreground"
-                  : "bg-primary text-primary-foreground hover:opacity-90"
-              }`}
-            >
-              <Check className="size-4" />
-              Approve Payment
-            </button>
-            <button
-              onClick={() => setDecision("REJECTED")}
-              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border px-6 py-4 text-sm font-bold transition-colors ${
-                decision === "REJECTED"
-                  ? "border-transparent bg-destructive text-destructive-foreground"
-                  : "border-destructive/40 text-destructive hover:bg-destructive/10"
-              }`}
-            >
-              <X className="size-4" />
-              Reject
-            </button>
-          </div>
-
-          <label className="mt-4 flex flex-col gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Decision note</span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              placeholder="Record the reasoning behind this decision…"
-              className="rounded-2xl border border-input bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-          </label>
-
-          {decision ? (
-            <p className="mt-3 rounded-2xl bg-muted px-4 py-3 text-sm font-semibold">
-              {invoice.invoiceNumber} marked{" "}
-              <span className={decision === "APPROVED" ? "text-primary-deep" : "text-destructive"}>
-                {decision}
-              </span>
-              .
-            </p>
-          ) : null}
-        </Card>
-      </div>
-    </AppShell>
-  );
+  if (!invoice) return <AppShell role="Finance" title="Invoice review"><Card><p className="text-sm text-muted-foreground">{loadError || "Loading invoice..."}</p></Card></AppShell>;
+  return <AppShell role="Finance" title={`Review ${invoice.invoiceNumber}`} subtitle={`${invoice.vendorName} · ${invoice.poNumber}`} actions={<Link to="/finance/review" className="rounded-full bg-card px-4 py-2.5 text-xs font-semibold shadow-card">Back to queue</Link>}>
+    <div className="flex flex-col gap-5">
+      <InvoiceHeader invoice={invoice} />
+      <div className="grid gap-5 lg:grid-cols-2"><InvoiceInformation invoice={invoice} /><Verification invoice={invoice} /><CategoryCard invoice={invoice} /><RiskAnalysis invoice={invoice} /><Evidence invoice={invoice} /><RelatedTransactions invoice={invoice} /></div>
+      <Card><CardHead title="Finance decision" sub="Record the approval decision and audit event" />
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional review note" className="mb-4 w-full rounded-xl border border-input bg-background p-3 text-sm" rows={3} />
+        {message && <p className="mb-3 text-sm">{message}</p>}
+        <div className="flex gap-3"><button onClick={() => void decide("APPROVED")} disabled={submitting || !!decision} className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}Approve</button><button onClick={() => void decide("REJECTED")} disabled={submitting || !!decision} className="inline-flex items-center gap-2 rounded-full border border-destructive/30 px-5 py-2.5 text-sm font-bold text-destructive disabled:opacity-50"><X className="size-4" />Reject</button></div>
+      </Card>
+    </div>
+  </AppShell>;
 }

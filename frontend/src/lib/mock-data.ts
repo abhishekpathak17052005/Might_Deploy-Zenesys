@@ -440,8 +440,10 @@ export const categories = [
   "Other",
 ];
 
-export const inr = (n: number) =>
-  "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+export const inr = (n?: number | null) => {
+  const val = typeof n === "number" && !isNaN(n) ? n : (Number(n) || 0);
+  return "₹" + val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+};
 
 export const monthlyVolume = [
   { label: "JAN", a: 32, b: 18 },

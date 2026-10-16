@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { requireRole } from '@/lib/route-guards'
+const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 
 export const Route = createFileRoute('/vendor/org-search')({
+  beforeLoad: () => requireRole(['VENDOR']),
   component: VendorOrgSearch,
 })
 
@@ -34,7 +37,8 @@ export function VendorOrgSearch() {
     setError(null)
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`/api/v1/vendors/organizations/search?q=${encodeURIComponent(searchQuery)}`, {
+      const response = await fetch(`${API_BASE}/vendor/organizations/search?q=${encodeURIComponent(searchQuery)}`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -42,8 +46,9 @@ export function VendorOrgSearch() {
 
       if (!response.ok) throw new Error('Search failed')
 
-      const data = await response.json()
-      setResults(data.organizations || [])
+      const json = await response.json()
+      const orgs = json.data?.organizations || json.organizations || []
+      setResults(orgs.map((org: any) => ({ ...org, _id: org._id || org.id })))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -56,7 +61,7 @@ export function VendorOrgSearch() {
     setError(null)
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch('/api/v1/vendors/organizations/select', {
+      const response = await fetch(`${API_BASE}/vendor/organizations/select`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -67,7 +72,7 @@ export function VendorOrgSearch() {
 
       if (!response.ok) {
         const errData = await response.json()
-        throw new Error(errData.message || 'Failed to link organization')
+        throw new Error(errData.error?.message || errData.message || 'Failed to link organization')
       }
 
       // Success
