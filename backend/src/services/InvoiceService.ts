@@ -465,7 +465,7 @@ export class InvoiceService {
     const vendorMatchStatus = "UNVERIFIED" as const;
     const criticalFields = [extracted.confidence.invoiceNumber, extracted.confidence.vendorName, extracted.confidence.total];
     const lowConfidence = criticalFields.some((field) => field.status !== "EXTRACTED" || (field.confidence ?? 0) < 0.75);
-    const extractionStatus = extracted.validation.status === "VALID" && data.total > 0 && data.items.length > 0 && !lowConfidence
+    const extractionStatus = extracted.validation.status === "VALID" && (data.total ?? 0) > 0 && data.items.length > 0 && !lowConfidence
       ? "SUCCEEDED" as const : "REVIEW_REQUIRED" as const;
 
     invoice.invoiceNumber = extracted.confidence.invoiceNumber.status === "MISSING" ? undefined : data.invoiceNumber || undefined;
@@ -473,9 +473,9 @@ export class InvoiceService {
     // Keep vendorName bound to the authenticated Vendor document, never OCR text.
     invoice.gstin = extracted.confidence.gstin.status === "MISSING" ? undefined : data.gstin || undefined;
     invoice.poNumber = extracted.confidence.poNumber.status === "MISSING" ? undefined : data.poNumber || undefined;
-    invoice.totalAmount = extracted.confidence.total.status === "MISSING" ? undefined : data.total;
-    invoice.subtotal = extracted.confidence.subtotal.status === "MISSING" ? undefined : data.subtotal;
-    invoice.taxAmount = extracted.confidence.tax.status === "MISSING" ? undefined : data.tax;
+    invoice.totalAmount = extracted.confidence.total.status === "MISSING" || !data.total ? undefined : data.total;
+    invoice.subtotal = extracted.confidence.subtotal.status === "MISSING" || !data.subtotal ? undefined : data.subtotal;
+    invoice.taxAmount = extracted.confidence.tax.status === "MISSING" || data.tax === null || data.tax === undefined ? undefined : data.tax;
     invoice.description = data.items.map((item) => item.description).filter(Boolean).join(", ") || undefined;
     invoice.lineItems = data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })) as typeof invoice.lineItems;
     invoice.ocrResult = {
@@ -484,9 +484,15 @@ export class InvoiceService {
       vendorName: extracted.confidence.vendorName.status === "MISSING" ? undefined : data.vendorName || undefined,
       gstin: extracted.confidence.gstin.status === "MISSING" ? undefined : data.gstin || undefined,
       poNumber: extracted.confidence.poNumber.status === "MISSING" ? undefined : data.poNumber || undefined,
-      totalAmount: extracted.confidence.total.status === "MISSING" ? undefined : data.total,
-      subtotal: extracted.confidence.subtotal.status === "MISSING" ? undefined : data.subtotal,
-      taxAmount: extracted.confidence.tax.status === "MISSING" ? undefined : data.tax,
+      totalAmount: extracted.confidence.total.status === "MISSING" || !data.total ? undefined : data.total,
+      subtotal: extracted.confidence.subtotal.status === "MISSING" || !data.subtotal ? undefined : data.subtotal,
+      taxAmount: extracted.confidence.tax.status === "MISSING" || data.tax === null || data.tax === undefined ? undefined : data.tax,
+      currency: data.currency || "INR",
+      discountAmount: data.discount ?? undefined,
+      shippingAmount: data.shipping ?? undefined,
+      adjustmentAmount: data.adjustments ?? undefined,
+      reconciliationStatus: extracted.validation.reconciliationStatus,
+      reconciliationMessage: extracted.validation.reconciliationMessage,
       lineItems: data.items.map((item) => ({ description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.amount })),
       extractedAt: extracted.extractedAt,
       rawConfidence: extracted.confidence,
@@ -498,13 +504,25 @@ export class InvoiceService {
       sourceDocumentSha256: extracted.sourceDocumentSha256,
     };
     invoice.extractionStatus = extractionStatus;
-    invoice.extractionError = extractionStatus === "SUCCEEDED" ? undefined : [
-      typeof (extracted.raw as any)?.structuringError === "string" ? (extracted.raw as any).structuringError : "",
-      lowConfidence ? "One or more critical OCR fields have low or missing confidence." : "",
-      ...extracted.validation.findings.map((finding) => finding.message),
-      !(data.total > 0) ? "A valid invoice total could not be extracted." : "",
-      !data.items.length ? "No invoice line items were extracted." : "",
-    ].filter(Boolean).join(" ") || "OCR output needs procurement review.";
+    const messages: string[] = [];
+    if (typeof (extracted.raw as any)?.structuringError === "string" && (extracted.raw as any).structuringError) {
+      messages.push((extracted.raw as any).structuringError.trim());
+    }
+    if (lowConfidence) {
+      messages.push("One or more critical OCR fields have low or missing confidence.");
+    }
+    for (const finding of extracted.validation.findings) {
+      if (finding.message && !messages.includes(finding.message)) {
+        messages.push(finding.message);
+      }
+    }
+    if (!(Number(data.total) > 0) && !messages.some((m) => m.toLowerCase().includes("total"))) {
+      messages.push("A valid invoice total could not be extracted.");
+    }
+    if (!data.items.length && !messages.some((m) => m.toLowerCase().includes("line item"))) {
+      messages.push("No invoice line items were extracted.");
+    }
+    invoice.extractionError = extractionStatus === "SUCCEEDED" ? undefined : messages.join(" ") || "OCR output needs procurement review.";
     invoice.vendorMatchStatus = vendorMatchStatus;
     invoice.poMatchStatus = data.poNumber ? "UNVERIFIED" : "NOT_REQUIRED";
     invoice.status = "REVIEW_REQUIRED";

@@ -100,6 +100,10 @@ export class ExtractionService {
     const tax = field<number>(data.tax);
     const total = field<number>(data.total);
     const dueDate = field<string>(data.due_date);
+    const currency = field<string>((data as any).currency);
+    const discount = field<number>((data as any).discount);
+    const shipping = field<number>((data as any).shipping);
+    const adjustments = field<number>((data as any).adjustments);
 
     const invoice: StructuredInvoiceData = {
       invoiceNumber: invoiceNumber.value ?? "",
@@ -107,9 +111,13 @@ export class ExtractionService {
       vendorName: vendorName.value ?? "",
       gstin: gstin.value || null,
       poNumber: poNumber.value || null,
-      subtotal: subtotal.value ?? 0,
-      tax: tax.value ?? 0,
-      total: total.value ?? 0,
+      subtotal: subtotal.value ?? null,
+      tax: tax.value ?? null,
+      total: total.value ?? null,
+      currency: currency.value || "INR",
+      discount: discount.value ?? null,
+      shipping: shipping.value ?? null,
+      adjustments: adjustments.value ?? null,
       dueDate: parseDate(dueDate.value),
       items: data.items.map((item) => ({
         description: item.description,

@@ -112,6 +112,8 @@ export interface InvoiceDocument {
   extractionConfidence?: Record<string, unknown>;
   extractionValidation?: {
     status: "VALID" | "INVALID";
+    reconciliationStatus?: "RECONCILED" | "INCOMPLETE" | "MISMATCH" | "REVIEW_REQUIRED";
+    reconciliationMessage?: string;
     findings: Array<Record<string, unknown>>;
   };
   extractedAt?: Date | null;

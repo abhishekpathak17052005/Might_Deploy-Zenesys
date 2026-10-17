@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
 import { requireRole } from '@/lib/route-guards'
+import { ReconciliationStatusAlert } from '@/components/ReconciliationStatusAlert'
 const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 
 export const Route = createFileRoute('/vendor/invoice/new')({
@@ -23,6 +24,7 @@ export function VendorInvoiceNew() {
   const [success, setSuccess] = useState(false)
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null)
   const [submittedInvoiceId, setSubmittedInvoiceId] = useState<string | null>(null)
+  const [submittedInvoice, setSubmittedInvoice] = useState<any | null>(null)
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
@@ -107,6 +109,7 @@ export function VendorInvoiceNew() {
       const invoice = result.data?.invoice
       if (!invoice?._id) throw new Error('The server accepted the upload but did not return its invoice record.')
       setSubmittedInvoiceId(String(invoice._id))
+      setSubmittedInvoice(invoice)
       const status = invoice.extractionStatus
       if (status === 'FAILED' || status === 'REVIEW_REQUIRED' || invoice.status === 'REVIEW_REQUIRED') {
         setSubmissionMessage(invoice.extractionError || 'OCR did not confirm all invoice fields. The original file is saved and the invoice requires review.')
@@ -159,12 +162,28 @@ export function VendorInvoiceNew() {
           <p className="text-gray-600 mt-2">Upload and submit an invoice for processing</p>
         </div>
 
-        {/* Success Message */}
-        {success && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-8">
-            <p className="text-amber-900 font-semibold">Invoice upload saved — check extraction status</p>
-            <p className="text-amber-800 mt-2">{submissionMessage}</p>
-            {submittedInvoiceId && <button type="button" onClick={() => navigate({ to: '/vendor/invoices/$id', params: { id: submittedInvoiceId } })} className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-semibold">View this invoice</button>}
+        {/* Success / Status Message */}
+        {success && submittedInvoice && (
+          <div className="mb-8 space-y-4">
+            <ReconciliationStatusAlert
+              totalAmount={submittedInvoice.totalAmount}
+              subtotal={submittedInvoice.subtotal}
+              taxAmount={submittedInvoice.taxAmount}
+              extractionStatus={submittedInvoice.extractionStatus}
+              extractionError={submittedInvoice.extractionError}
+              ocrResult={submittedInvoice.ocrResult}
+            />
+            {submittedInvoiceId && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/vendor/invoices/$id', params: { id: submittedInvoiceId } })}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold text-sm shadow transition-colors"
+                >
+                  View invoice details & uploaded bill →
+                </button>
+              </div>
+            )}
           </div>
         )}
 

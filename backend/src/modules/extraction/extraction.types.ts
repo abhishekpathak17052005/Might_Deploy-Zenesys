@@ -14,15 +14,25 @@ export interface ExtractedInvoiceItem {
   amount: number | null;
 }
 
+export type ReconciliationStatus =
+  | "RECONCILED"
+  | "INCOMPLETE"
+  | "MISMATCH"
+  | "REVIEW_REQUIRED";
+
 export interface StructuredInvoiceData {
   invoiceNumber: string;
   invoiceDate: Date;
   vendorName: string;
   gstin?: string | null;
   poNumber?: string | null;
-  subtotal: number;
-  tax: number;
-  total: number;
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
+  currency?: string | null;
+  discount?: number | null;
+  shipping?: number | null;
+  adjustments?: number | null;
   dueDate?: Date | null;
   items: ExtractedInvoiceItem[];
 }
@@ -45,6 +55,11 @@ export type ExtractionFindingType =
   | "LINE_ITEM_AMOUNT_MISMATCH"
   | "SUBTOTAL_MISMATCH"
   | "TOTAL_MISMATCH"
+  | "MISSING_TOTAL"
+  | "MISSING_TAX"
+  | "MISSING_SUBTOTAL"
+  | "RECONCILIATION_INCOMPLETE"
+  | "CURRENCY_MISMATCH"
   | "NEGATIVE_VALUE"
   | "INVALID_DATE"
   | "GSTIN_FORMAT_INVALID"
@@ -62,6 +77,8 @@ export interface ExtractionValidationFinding {
 
 export interface ExtractionValidationResult {
   status: "VALID" | "INVALID";
+  reconciliationStatus?: ReconciliationStatus;
+  reconciliationMessage?: string;
   findings: ExtractionValidationFinding[];
 }
 

@@ -254,6 +254,82 @@ const tests: TestCase[] = [
       };
       const validation = validateExtractedInvoiceMath(invoice);
       assert.equal(validation.status, "VALID");
+      assert.equal(validation.reconciliationStatus, "RECONCILED");
+    }
+  },
+  {
+    name: "reconciliation: missing total returns REVIEW_REQUIRED and never reports arithmetic mismatch",
+    run: () => {
+      const invoice = { ...validInvoice, total: null };
+      const validation = validateExtractedInvoiceMath(invoice);
+      assert.equal(validation.status, "INVALID");
+      assert.equal(validation.reconciliationStatus, "REVIEW_REQUIRED");
+      assert.equal(validation.findings.some((f) => f.type === "TOTAL_MISMATCH"), false);
+      assert.ok(validation.findings.some((f) => f.type === "MISSING_TOTAL"));
+    }
+  },
+  {
+    name: "reconciliation: missing tax returns INCOMPLETE without claiming arithmetic mismatch",
+    run: () => {
+      const invoice = { ...validInvoice, tax: null };
+      const validation = validateExtractedInvoiceMath(invoice);
+      assert.equal(validation.status, "INVALID");
+      assert.equal(validation.reconciliationStatus, "INCOMPLETE");
+      assert.equal(validation.findings.some((f) => f.type === "TOTAL_MISMATCH"), false);
+      assert.ok(validation.findings.some((f) => f.type === "MISSING_TAX"));
+    }
+  },
+  {
+    name: "reconciliation: missing subtotal returns INCOMPLETE",
+    run: () => {
+      const invoice = { ...validInvoice, subtotal: null };
+      const validation = validateExtractedInvoiceMath(invoice);
+      assert.equal(validation.status, "INVALID");
+      assert.equal(validation.reconciliationStatus, "INCOMPLETE");
+      assert.equal(validation.findings.some((f) => f.type === "TOTAL_MISMATCH"), false);
+      assert.ok(validation.findings.some((f) => f.type === "MISSING_SUBTOTAL"));
+    }
+  },
+  {
+    name: "reconciliation: valid invoice with discount and shipping reconciles correctly",
+    run: () => {
+      const invoice: StructuredInvoiceData = {
+        ...validInvoice,
+        subtotal: 10000,
+        tax: 1800,
+        discount: 500,
+        shipping: 200,
+        adjustments: -50,
+        total: 11450,
+        items: [{ description: "Hardware", quantity: 1, unitPrice: 10000, amount: 10000 }]
+      };
+      const validation = validateExtractedInvoiceMath(invoice);
+      assert.equal(validation.status, "VALID");
+      assert.equal(validation.reconciliationStatus, "RECONCILED");
+      assert.equal(validation.findings.some((f) => f.type === "TOTAL_MISMATCH"), false);
+    }
+  },
+  {
+    name: "reconciliation: genuine mismatch with adjustments creates expected evidence",
+    run: () => {
+      const invoice: StructuredInvoiceData = {
+        ...validInvoice,
+        subtotal: 10000,
+        tax: 1800,
+        discount: 500,
+        shipping: 200,
+        adjustments: -50,
+        total: 12000,
+        items: [{ description: "Hardware", quantity: 1, unitPrice: 10000, amount: 10000 }]
+      };
+      const validation = validateExtractedInvoiceMath(invoice);
+      assert.equal(validation.status, "INVALID");
+      assert.equal(validation.reconciliationStatus, "MISMATCH");
+      const finding = validation.findings.find((f) => f.type === "TOTAL_MISMATCH");
+      assert.ok(finding);
+      assert.equal(finding?.expected, 11450);
+      assert.equal(finding?.actual, 12000);
+      assert.equal(finding?.difference, 550);
     }
   }
 ];

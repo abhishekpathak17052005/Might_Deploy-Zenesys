@@ -57,6 +57,10 @@ export const geminiExtractionResponseSchema = z.object({
   subtotal: numberFieldSchema,
   tax: numberFieldSchema,
   total: numberFieldSchema,
+  currency: optionalStringFieldSchema.optional().nullable(),
+  discount: numberFieldSchema.optional().nullable(),
+  shipping: numberFieldSchema.optional().nullable(),
+  adjustments: numberFieldSchema.optional().nullable(),
   due_date: optionalStringFieldSchema.optional().nullable(),
   items: z.array(geminiInvoiceItemSchema)
 });
@@ -67,9 +71,13 @@ export const structuredInvoiceSchema = z.object({
   vendorName: z.string().min(1),
   gstin: z.string().regex(GSTIN_FORMAT).nullable().optional(),
   poNumber: z.string().nullable().optional(),
-  subtotal: z.number().finite().nonnegative(),
-  tax: z.number().finite().nonnegative(),
-  total: z.number().finite().nonnegative(),
+  subtotal: z.number().finite().nonnegative().nullable().optional(),
+  tax: z.number().finite().nonnegative().nullable().optional(),
+  total: z.number().finite().nonnegative().nullable().optional(),
+  currency: z.string().nullable().optional(),
+  discount: z.number().finite().nonnegative().nullable().optional(),
+  shipping: z.number().finite().nonnegative().nullable().optional(),
+  adjustments: z.number().finite().nullable().optional(),
   dueDate: z.date().nullable().optional(),
   items: z.array(z.object({
     description: z.string().min(1),

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { requireRole } from '@/lib/route-guards'
 import { ArrowDownToLine, ArrowLeft, ArrowUpRight, Check, Circle, Clock3, FileCheck2, FileText, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
+import { ReconciliationStatusAlert } from '@/components/ReconciliationStatusAlert'
 const API_BASE = import.meta.env['VITE_API_URL'] || 'http://localhost:5000/api'
 import { useEffect, useState } from 'react'
 
@@ -287,10 +288,21 @@ export function VendorInvoiceDetails() {
           </div>
         </div>
 
+        {/* Reconciliation and Verification Status */}
+        <div className="mb-8">
+          <ReconciliationStatusAlert
+            totalAmount={invoice.totalAmount}
+            subtotal={invoice.subtotal}
+            taxAmount={invoice.taxAmount}
+            extractionStatus={invoice.extractionStatus}
+            extractionError={invoice.extractionError}
+            ocrResult={invoice.ocrResult}
+          />
+        </div>
+
         {(invoice.status === 'REVIEW_REQUIRED' || invoice.extractionStatus === 'FAILED' || invoice.extractionStatus === 'REVIEW_REQUIRED') && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-8" role="status">
             <h2 className="text-lg font-bold text-amber-900">Extraction needs review</h2>
-            <p className="mt-2 text-amber-900">{invoice.extractionError || 'Some invoice values could not be confidently extracted. Review the original uploaded document below.'}</p>
             <p className="mt-2 text-sm text-amber-800">Extraction state: {invoice.extractionStatus || 'not recorded'} · Risk evaluation: {invoice.riskEvaluationStatus || 'not evaluated'}</p>
             {invoice.status === 'REVIEW_REQUIRED' && invoice.extractionStatus !== 'PROCESSING' && <button type="button" onClick={retryExtraction} disabled={reprocessing} className="mt-4 rounded-lg bg-amber-800 px-4 py-2 font-semibold text-white hover:bg-amber-900 disabled:opacity-50">{reprocessing ? 'Retrying extraction…' : 'Retry extraction from this bill'}</button>}
             {reprocessMessage && <p role="status" className="mt-3 text-sm text-amber-900">{reprocessMessage}</p>}

@@ -8,6 +8,7 @@ import { STATUS_FLOW, STATUS_LABEL, type Invoice } from "@/lib/mock-data";
 import { requireRole } from "@/lib/route-guards";
 import { apiClient } from "@/lib/api";
 import { toInvoiceView } from "@/lib/invoice-adapter";
+import { ReconciliationStatusAlert } from "@/components/ReconciliationStatusAlert";
 
 export const Route = createFileRoute("/procurement/invoices/$id")({
   beforeLoad: () => requireRole(["PROCUREMENT_OFFICER", "ORGANIZATION_ADMIN"]),
@@ -99,6 +100,16 @@ function InvoiceStatus() {
             <p>Vendor name on bill: <strong>{rawInvoice?.ocrResult?.vendorName || "Not extracted"}</strong> · match: <strong>{rawInvoice?.vendorMatchStatus || "UNVERIFIED"}</strong></p>
             <p>Purchase order: <strong>{rawInvoice?.poNumber || "Not present on bill"}</strong> · match: <strong>{rawInvoice?.poMatchStatus || "UNVERIFIED"}</strong></p>
             <p>Risk evaluation: <strong>{rawInvoice?.riskEvaluationStatus || "NOT_EVALUATED"}</strong></p>
+          </div>
+          <div className="mt-4">
+            <ReconciliationStatusAlert
+              totalAmount={rawInvoice?.totalAmount}
+              subtotal={rawInvoice?.subtotal}
+              taxAmount={rawInvoice?.taxAmount}
+              extractionStatus={rawInvoice?.extractionStatus}
+              extractionError={rawInvoice?.extractionError}
+              ocrResult={rawInvoice?.ocrResult}
+            />
           </div>
           {needsExplicitReview && <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"><input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} className="mt-1" /><span>I reviewed the uploaded bill and acknowledge the unresolved OCR, vendor, or PO evidence. This exception will be recorded in the audit log.</span></label>}
           {amountValue == null && <p className="mt-3 text-sm font-semibold text-amber-700">No amount was extracted. Use the uploaded bill as evidence and resolve it during procurement review.</p>}

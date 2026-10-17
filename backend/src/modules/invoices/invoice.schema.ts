@@ -68,6 +68,8 @@ export const lineItemSchema = z.object({
 
 export const extractionValidationSchema = z.object({
   status: z.enum(["VALID", "INVALID"]),
+  reconciliationStatus: z.enum(["RECONCILED", "INCOMPLETE", "MISMATCH", "REVIEW_REQUIRED"]).optional(),
+  reconciliationMessage: z.string().optional(),
   findings: z.array(z.record(z.unknown()))
 });
 

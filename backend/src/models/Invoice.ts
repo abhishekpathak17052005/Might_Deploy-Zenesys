@@ -22,6 +22,12 @@ export interface OCRResult {
   totalAmount?: number;
   subtotal?: number;
   taxAmount?: number;
+  currency?: string;
+  discountAmount?: number;
+  shippingAmount?: number;
+  adjustmentAmount?: number;
+  reconciliationStatus?: "RECONCILED" | "INCOMPLETE" | "MISMATCH" | "REVIEW_REQUIRED";
+  reconciliationMessage?: string;
   lineItems?: Array<{
     description?: string;
     quantity?: number | null;
@@ -252,6 +258,15 @@ const invoiceSchema = new Schema<IInvoice>(
       totalAmount: Number,
       subtotal: Number,
       taxAmount: Number,
+      currency: String,
+      discountAmount: Number,
+      shippingAmount: Number,
+      adjustmentAmount: Number,
+      reconciliationStatus: {
+        type: String,
+        enum: ["RECONCILED", "INCOMPLETE", "MISMATCH", "REVIEW_REQUIRED"],
+      },
+      reconciliationMessage: String,
       lineItems: [
         {
           description: String,

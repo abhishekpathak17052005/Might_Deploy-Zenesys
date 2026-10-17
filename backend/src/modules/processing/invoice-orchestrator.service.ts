@@ -120,7 +120,7 @@ export class InvoiceProcessingOrchestrator {
       extraction: {
         invoiceNumber: context.invoice.invoiceNumber,
         vendorName: context.invoice.vendorName,
-        amount: context.invoice.total,
+        amount: context.invoice.total ?? 0,
         invoiceDate: context.invoice.invoiceDate?.toISOString(),
         poNumber: context.invoice.poNumber || undefined,
         gstin: context.invoice.gstin || undefined
@@ -239,7 +239,7 @@ export class InvoiceProcessingOrchestrator {
       const poVerification = poVerificationService.verify({
         poNumber: context.invoice.poNumber,
         vendorName: context.invoice.vendorName,
-        invoiceAmount: context.invoice.total,
+        invoiceAmount: context.invoice.total ?? 0,
         invoiceQuantity: context.invoice.items?.reduce((sum, item) => sum + (item.quantity || 0), 0)
       });
 
@@ -293,7 +293,7 @@ export class InvoiceProcessingOrchestrator {
           vendorName: context.invoice.vendorName,
           invoiceNumber: context.invoice.invoiceNumber,
           invoiceDate: context.invoice.invoiceDate,
-          totalAmount: context.invoice.total,
+          totalAmount: context.invoice.total ?? undefined,
           poNumber: context.invoice.poNumber,
           gstin: context.invoice.gstin,
           lineItems: (context.invoice.items || []).map((item) => ({
