@@ -29,6 +29,48 @@ export function extractLabelledTotal(ocrText: string): { value: number; evidence
   return null;
 }
 
+export function extractLabelledSubtotal(ocrText: string): { value: number; evidence: string } | null {
+  const lines = ocrText.split(/\r?\n/);
+  const label = /\b(?:sub\s*-?\s*total|taxable\s+value|net\s+amount)\b/i;
+  const amount = /(?:\u20B9|Rs\.?|INR)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]+)(?:\.([0-9]{1,2}))?\s*(?:\/-|\/\-)?/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!label.test(lines[index] || "")) continue;
+
+    const window = [lines[index] || ""];
+    for (let offset = 1; offset <= 2 && index + offset < lines.length; offset += 1) {
+      const next = lines[index + offset] || "";
+      if (/\b(?:grand\s+total|total\s+amount|invoice\s+total|cgst|sgst|igst|tax)\b/i.test(next)) break;
+      window.push(next);
+    }
+
+    const evidence = window.join("\n").trim();
+    const match = evidence.match(amount);
+    if (!match) continue;
+    const value = Number(`${match[1]!.replace(/,/g, "")}${match[2] ? `.${match[2]}` : ""}`);
+    if (Number.isFinite(value) && value > 0) return { value, evidence };
+  }
+  return null;
+}
+
+export function attachLabelledSubtotal<T extends Record<string, unknown>>(result: T, ocrText: string): T {
+  if (typeof result.subtotal === "number" && result.subtotal > 0) return result;
+  const extracted = extractLabelledSubtotal(ocrText);
+  if (!extracted) return result;
+
+  const provenance = result.provenance && typeof result.provenance === "object"
+    ? result.provenance as Record<string, unknown>
+    : {};
+  return {
+    ...result,
+    subtotal: extracted.value,
+    provenance: {
+      ...provenance,
+      subtotal: { value: extracted.value, source: extracted.evidence, confidence: null },
+    },
+  };
+}
+
 export function attachLabelledTotal<T extends Record<string, unknown>>(result: T, ocrText: string): T {
   if (typeof result.total === "number" && result.total > 0) return result;
   const extracted = extractLabelledTotal(ocrText);
@@ -68,11 +110,13 @@ export function extractNumberedLineItems(ocrText: string): Array<{ description: 
 
 /** Apply only direct, source-backed OCR evidence after AI structurers fail or omit data. */
 export function applyOcrEvidenceFallback<T extends Record<string, unknown>>(result: T, ocrText: string): T {
-  const withTotal = attachLabelledTotal(result, ocrText);
+  const withSubtotal = attachLabelledSubtotal(result, ocrText);
+  const withTotal = attachLabelledTotal(withSubtotal, ocrText);
   const existingItems = Array.isArray(withTotal.items) ? withTotal.items : [];
   const parsedItems = existingItems.length ? [] : extractNumberedLineItems(ocrText);
-  const recoveredTotal = typeof withTotal.total === "number" && withTotal.total > 0;
-  if (!parsedItems.length && !recoveredTotal) return withTotal;
+  const recoveredField = (typeof withTotal.total === "number" && withTotal.total > 0)
+    || (typeof withTotal.subtotal === "number" && withTotal.subtotal > 0 && typeof result.subtotal !== "number");
+  if (!parsedItems.length && !recoveredField) return withTotal;
 
   const provenance = withTotal.provenance && typeof withTotal.provenance === "object"
     ? withTotal.provenance as Record<string, unknown>

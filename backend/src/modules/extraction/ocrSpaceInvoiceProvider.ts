@@ -9,6 +9,8 @@ type Structurer = Pick<{ structure: (ocrText: string) => Promise<any> }, "struct
 function completenessScore(result: Record<string, unknown>): number {
   const items = Array.isArray(result.items) ? result.items.filter((item: any) => typeof item?.description === "string" && item.description.trim()) : [];
   return (typeof result.total === "number" && result.total > 0 ? 10 : 0)
+    + (typeof result.subtotal === "number" && result.subtotal > 0 ? 4 : 0)
+    + (typeof result.tax === "number" && result.tax >= 0 ? 2 : 0)
     + Math.min(items.length, 20)
     + (typeof result.invoice_number === "string" && result.invoice_number ? 1 : 0)
     + (typeof result.invoice_date === "string" && result.invoice_date ? 1 : 0)

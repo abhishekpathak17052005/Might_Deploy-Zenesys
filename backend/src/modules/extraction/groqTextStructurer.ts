@@ -15,7 +15,21 @@ function hasEvidence(text: string, evidence: unknown): evidence is string {
 
 function printedAmount(value: unknown, evidence: string): value is number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return false;
-  return (evidence.match(/\d[\d,]*(?:\.\d{1,2})?/g) || []).some((token) => Number(token.replace(/,/g, "")) === value);
+  return (evidence.match(/\d[\d,]*(?:\.\d{1,2})?/g) || []).some((token) => Math.abs(Number(token.replace(/,/g, "")) - value) < 0.009);
+}
+
+function isLabeledInText(text: string, evidence: string, label: RegExp): boolean {
+  if (label.test(evidence)) return true;
+  const lines = text.split(/\r?\n/);
+  const normalizedEv = normalize(evidence);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] || "";
+    if (normalize(line).includes(normalizedEv)) {
+      const window = [lines[i - 1] || "", line, lines[i + 1] || ""].join(" ");
+      if (label.test(window)) return true;
+    }
+  }
+  return false;
 }
 
 function dateEvidenceMatches(isoDate: string, evidence: string): boolean {
@@ -48,7 +62,7 @@ function scalar(text: string, field: FieldWithEvidence | undefined, numeric = fa
   if (numeric ? !printedAmount(field.value, field.evidence) : typeof field.value !== "string") return { value: null, source: null };
   if (!numeric && !normalize(field.evidence as string).includes(normalize(field.value as string))
     && !(dateField && typeof field.value === "string" && dateEvidenceMatches(field.value, field.evidence as string))) return { value: null, source: null };
-  if (label && !label.test(field.evidence as string)) return { value: null, source: null };
+  if (label && !isLabeledInText(text, field.evidence as string, label)) return { value: null, source: null };
   return { value: field.value, source: field.evidence.trim() };
 }
 
@@ -109,9 +123,9 @@ export class GroqTextStructurer {
       const fields: Record<string, { value: unknown; source: string | null }> = {};
       for (const name of scalarFields) {
         const numeric = ["subtotal", "tax", "total"].includes(name);
-        const label = name === "subtotal" ? /\b(sub\s*total|taxable\s*value)\b/i
+        const label = name === "subtotal" ? /\b(sub\s*-?\s*total|taxable\s*value|net\s*amount)\b/i
           : name === "tax" ? /\b(gst|igst|cgst|sgst|tax)\b/i
-          : name === "total" ? /\b(total|payable|amount\s+due)\b/i
+          : name === "total" ? /\b(grand\s+total|total\s+amount|invoice\s+total|net\s+payable|amount\s+due|total\s+payable|\btotal\b)\b/i
           : undefined;
         fields[name] = scalar(ocrText, parsed[name], numeric, label, name === "invoice_date");
       }

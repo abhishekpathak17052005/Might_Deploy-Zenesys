@@ -16,7 +16,21 @@ function evidenceIsPresent(text: string, evidence: unknown): evidence is string 
 function amountAppearsInEvidence(value: unknown, evidence: string): value is number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return false;
   const printed = evidence.match(/\d[\d,]*(?:\.\d{1,2})?/g) || [];
-  return printed.some((token) => Number(token.replace(/,/g, "")) === value);
+  return printed.some((token) => Math.abs(Number(token.replace(/,/g, "")) - value) < 0.009);
+}
+
+function isLabeledInText(text: string, evidence: string, label: RegExp): boolean {
+  if (label.test(evidence)) return true;
+  const lines = text.split(/\r?\n/);
+  const normalizedEv = normalized(evidence);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] || "";
+    if (normalized(line).includes(normalizedEv)) {
+      const window = [lines[i - 1] || "", line, lines[i + 1] || ""].join(" ");
+      if (label.test(window)) return true;
+    }
+  }
+  return false;
 }
 
 function dateEvidenceMatches(isoDate: string, evidence: string): boolean {
@@ -51,7 +65,7 @@ function verifiedScalar<T>(text: string, field: EvidenceValue | undefined, numer
   if (!numeric && typeof field.value !== "string") return { value: null, source: null };
   if (!numeric && !normalized(field.evidence as string).includes(normalized(field.value as string))
     && !(dateField && typeof field.value === "string" && dateEvidenceMatches(field.value, field.evidence as string))) return { value: null, source: null };
-  if (label && !label.test(field.evidence as string)) return { value: null, source: null };
+  if (label && !isLabeledInText(text, field.evidence as string, label)) return { value: null, source: null };
   return { value: field.value as T, source: field.evidence.trim() };
 }
 
@@ -138,9 +152,9 @@ export class GeminiTextStructurer {
       const verified: Record<string, { value: unknown; source: string | null }> = {};
       for (const fieldName of fields) {
         const numeric = ["subtotal", "tax", "total"].includes(fieldName);
-        const fieldLabel = fieldName === "subtotal" ? /\b(sub\s*total|taxable\s*value)\b/i
+        const fieldLabel = fieldName === "subtotal" ? /\b(sub\s*-?\s*total|taxable\s*value|net\s*amount)\b/i
           : fieldName === "tax" ? /\b(gst|igst|cgst|sgst|tax)\b/i
-          : fieldName === "total" ? /\b(total|payable|amount\s+due)\b/i
+          : fieldName === "total" ? /\b(grand\s+total|total\s+amount|invoice\s+total|net\s+payable|amount\s+due|total\s+payable|\btotal\b)\b/i
           : undefined;
         const result = verifiedScalar(ocrText, parsed[fieldName], numeric, fieldLabel, fieldName === "invoice_date");
         verified[fieldName] = result;
