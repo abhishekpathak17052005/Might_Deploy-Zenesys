@@ -57,16 +57,22 @@ function LoginPage() {
       localStorage.setItem("userEmail", email);
       localStorage.setItem("userId", data.data.userId);
 
+      const userRole = data.data.user?.role || (email.includes("procurement") ? "PROCUREMENT_OFFICER" : email.includes("finance") ? "FINANCE_MANAGER" : "VENDOR");
+      localStorage.setItem("userRole", userRole);
+      localStorage.setItem("invoiceflow_role", userRole);
+
       if (rememberMe) {
         localStorage.setItem("rememberEmail", email);
       } else {
         localStorage.removeItem("rememberEmail");
       }
 
-      if (email.includes("procurement")) {
+      if (userRole === "PROCUREMENT_OFFICER" || email.includes("procurement")) {
         navigate({ to: "/procurement/dashboard" });
-      } else if (email.includes("finance")) {
+      } else if (userRole === "FINANCE_MANAGER" || email.includes("finance")) {
         navigate({ to: "/finance/dashboard" });
+      } else if (userRole === "VENDOR" || email.includes("vendor")) {
+        navigate({ to: "/vendor/dashboard" });
       } else {
         navigate({ to: "/" });
       }

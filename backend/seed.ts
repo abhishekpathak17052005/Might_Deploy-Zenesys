@@ -109,6 +109,11 @@ export async function seedDemoData() {
       });
       await vendorUser.save();
       console.log("✓ Created vendor@demo.com");
+    } else {
+      vendorUser.password = "Demo@12345";
+      vendorUser.isActive = true;
+      await vendorUser.save();
+      console.log("✓ Updated vendor@demo.com with Demo@12345");
     }
 
     let demoVendor = await Vendor.findOne({ name: "TechSupplies Global" });

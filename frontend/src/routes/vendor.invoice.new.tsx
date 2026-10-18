@@ -34,13 +34,26 @@ export function VendorInvoiceNew() {
   const fetchVendorOrganizations = async () => {
     try {
       const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('You are not signed in. Please sign in as a vendor to submit invoices.')
+      }
+
       const response = await fetch(`${API_BASE}/vendor/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       })
 
-      if (!response.ok) throw new Error('Failed to fetch organizations')
+      if (response.status === 401) {
+        throw new Error('Your session has expired. Please sign in again.')
+      }
+      if (response.status === 403) {
+        throw new Error('You are currently logged in with a non-vendor account. Please switch to a vendor account to submit invoices.')
+      }
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null)
+        throw new Error(errJson?.error?.message || errJson?.message || 'Could not load your linked organizations')
+      }
 
       const json = await response.json()
       const vendor = json.data?.vendor || json.vendor
@@ -50,6 +63,9 @@ export function VendorInvoiceNew() {
           name: typeof org === 'object' && org.name ? org.name : `Organization ${typeof org === 'string' ? org.substring(0, 8) : ''}...`,
         }))
       setOrganizations(mappedOrganizations)
+      if (mappedOrganizations.length > 0 && !selectedOrgId) {
+        setSelectedOrgId(mappedOrganizations[0]._id)
+      }
     } catch (err) {
       setOrganizations([])
       setError(err instanceof Error ? err.message : 'Could not load your linked organizations')
@@ -190,8 +206,23 @@ export function VendorInvoiceNew() {
         {/* Error Message */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
-            <p className="text-red-800 font-semibold">Error</p>
+            <p className="text-red-800 font-semibold">Notice</p>
             <p className="text-red-700 mt-2">{error}</p>
+            {(error.includes('sign in') || error.includes('non-vendor') || error.includes('expired')) && (
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('token')
+                  localStorage.removeItem('userRole')
+                  localStorage.removeItem('invoiceflow_token')
+                  localStorage.removeItem('invoiceflow_role')
+                  navigate({ to: '/login' })
+                }}
+                className="mt-4 inline-flex items-center rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 transition-colors"
+              >
+                Sign In with a Vendor Account
+              </button>
+            )}
           </div>
         )}
 
